@@ -1,0 +1,657 @@
+---
+title: 'Day 1 Session 1: <br> Static spectral analysis <br> using linear mixed-effect modelling'
+author: "Takayuki Nagamine"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+    # html_document: 
+    # toc: true
+    # toc_float: true
+    # number_sections: true
+---
+
+```{r include=FALSE}
+library(rmdformats)
+library(tidyverse)
+
+# setting the plot theme globally
+theme_set(theme_classic())
+
+# define colour-blind-friendly colour palette 
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+"#D55E00", "#CC79A7")
+```
+
+
+# Introduction
+
+Welcome to the workshop **Analysing contours in phonetic data: Dynamic analysis hands-on workshop using R**! In this workshop, we are going to study two main approachces to dynamic data analysis that are often used in phonetics. 
+
+# The overarching question in this workshop
+
+## L1 Japanese speakers' production of L2 English /l/ and /ɹ/
+
+## Workshop materials
+
+In this workshop, we will be using the materials from one of my previous publications. Data and codes for the analysis are publicly available on the Open Science Framework (OSF) repository, and we will retrieve the data sets from there.
+
+If interested, the article can be accessed here (open access):
+
+Nagamine, T. (2024). Formant dynamics in second language
+speech: Japanese speakers’ production of English liquids. *The Journal of the
+Acoustical Society of America, 155*(1), 479–495. https://doi.org/10.1121/10.0024351
+
+Here is the URL for the online supplementary materials deposited on the following OSF repository:
+
+https://osf.io/2phx5/
+
+# Preliminaries
+
+## Installing/loading packages
+
+Let's first install and load R packages that we are using in the static analysis section. The installation commands have been commented out, but please uncomment them and install the packages if you do not have them on your machine yet.  
+
+```{r warning=FALSE, message=FALSE}
+# installing
+# install.packages("tidyverse")
+# install.packages("lme4")
+# install.packages("lme4Test")
+# install.packages("emmeans")
+
+# importing
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+```
+
+
+A common approach to spectral analysis would be to extract formant frequencies from a single point in time and model them using linear mixed-effect models. Let's try this to see what the analysis offers.
+
+# Importing data set
+
+Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
+
+```{r message=FALSE}
+# import the csv file "initial.liquid.static.csv" from the "data" directory and save it as "df_mid"
+df_mid <- readr::read_csv("data/initial.liquid.static.csv")
+```
+
+# Checking data
+
+It's always a good idea to spend some time inspecting the data set. I usually start with checking the column names using ```colnames()```. 
+
+```{r}
+# Let's check what columns the data frame contains
+colnames(df_mid)
+```
+
+According to the code above, the data frame contains the following columns:
+
+- **file**: The name of source audio files. A legacy information from the acoustic analysis.
+
+- **speaker**: Randomly generated speaker IDs consisting of a combination of letters and numbers. 
+
+- **language**: Speaker's first language: either English or Japanese
+
+- **duration**: Duration of the liquid phoneme.
+
+- **segment**: Types of the segment, either L (/l/) or R (/ɹ/)
+
+- **word**: Words that the speakers produced. 
+
+- **f1**, **f2** and **f3**: Formant frequencies in Hz.
+
+- **previous_sound**: The sound occurring before the word-initial liquid consonant. Empty as the words were uttered in isolation. 
+
+- **next_sound**: The sound occurring after the word-initial liquid consonant. In this case, this shows vowel context. 
+
+- **percent**: Proportional time during the liquid consonant. The data set only contains midpoint measurement, so this should be all **50**(%).
+
+- **IsApproximant**: Auditory and visual judgement (based on the spectrogram) as to whether the liquid consonant can be classified as an approximant or not (i.e., an alveolar stop or flap). 
+
+- **IsAcoustic**: Auditory and visual judgement as to the clarity/visibility of the formant structure on the spectrogram. Broadly corresponding to the recording quality.
+
+- **gender**: Speakers' gender. Either male or female.
+
+- **omit**: The column indicating whether acoustic analysis tool omitted the token from the analysis. Irrelevant for the purpose of this workshop. 
+
+- **position**: The syllabic (or word) position of the liquid consonant. All should be **initial**. 
+
+# Data tidy-up
+
+There are quite a few columns in the data set but not all of them are relevant throughout. Let's tidy up the data frame so that the subsequent analysis will be more straightforward. 
+
+## Check data
+
+First, we will inspect a summary of the data according to the columns that we have so far. Although not the most efficient, my approach is to combine ```dplyr::group_by()``` and ```dplyr::summarise()``` functions to summarise the data. Do not forget ```dplyr::ungroup()``` at the end of each operation, too!
+
+```{r}
+# Let's check the number of "approximant" tokens
+df_mid |> 
+  dplyr::group_by(IsApproximant) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Let's check the number of tokens of good recording quality
+df_mid |> 
+  dplyr::group_by(IsAcoustic) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# How about 'omit'?
+df_mid |> 
+  dplyr::group_by(omit) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+```
+
+## Omitting irrelavent columns
+
+The codes above show that the data set only contains liquid tokens that are classified as an approximant, deemed as of good recording quality, and included in the acoustic analysis. This means that we can safely remove these columns. Let's do this via ```dplyr::select()``` function. After that, we check the column names again using ```colnames()```, showing that the three columns have been safely removed from the data frame. 
+
+```{r}
+# Remove columns 
+df_mid <- df_mid |> 
+  dplyr::select(-c(IsApproximant, IsAcoustic, omit))
+```
+
+### Your turn
+
+Please write a code below to check the updated column names:
+
+```{r}
+# Check column names again
+# ...
+```
+
+## Renaming variables
+
+Later on in this workshop, we will be modelling the formant frequencies as a function of vowel context. In terms of the current data set, this corresponds to the **next_sound** column, but let's rename it into **vowel** to make it more intuitive by adding a new column. 
+
+Also, we will also convert the ARPABET notations into the IPA symbols. 
+
+```{r}
+df_mid <- df_mid |> 
+  dplyr::mutate(
+    vowel = case_when(
+      next_sound == "AE1" ~ "/æ/",
+      next_sound == "IY1" ~ "/i/",
+      next_sound == "UW1" ~ "/u/",
+    )
+  )
+```
+
+
+## Checking the number of participants, tokens...
+
+Let's also obtain some descriptive statistics here.
+
+```{r}
+# number of participants
+df_mid |> 
+  dplyr::group_by(language) |> 
+  dplyr::summarise(n = n_distinct(speaker)) |> 
+  dplyr::ungroup()
+
+# number of tokens per segment
+df_mid |> 
+  dplyr::group_by(segment) |> 
+  dplyr::summarise(n = n()) |> 
+  dplyr::ungroup()
+```
+
+### Your turn
+
+Is there anything else that you would like to know about the data set?
+
+You can start with checking the column names to see what variables are available in the data set. Then, use ```dplyr::group_by()```, ```dplyr::summarise()``` and ```dplyr::ungroup()``` functions to inspect the data.
+
+```{r}
+# Check data further
+# ...
+```
+
+
+# Data visualisation
+
+Hopefully, you start to become relatively farmiliar with the data set through the checking and tidying-up process above. Now, in order to understand the overall trend of the data, let's try some data visualisation. I heavily rely on the ```ggplot2``` package in the ```tidyverse``` suite. 
+
+## Preparation
+
+Before visualising the data, we need to make sure that the formant frequencies are comparable across speakers. We know that we cannot directly compare raw formant frequencies because they are heavily influenced by the vocal tract characteristics depending on the speaker's gender, sex, height etc. 
+
+To address this, let's normalise the formant frequencies across speakers. There are various normalisation methods, but today we are just using **z-score** normalisation, in which **the mean value** for each speaker is expressed as zero and **the standard deviation** is scaled to one. This can be achieved via ```scale()``` function included in base R. 
+
+Let's create ```f1z```, ```f2z``` and ```f3z``` columns using the ```dplyr::mutate()``` function. When doing this, make sure that you do the scaling for each speaker by specifying ```dplyr::group_by(speaker)```.
+
+```{r}
+df_mid <- df_mid |> 
+  dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
+  dplyr::mutate(
+    f1z = as.numeric(scale(f1)), # scale f1 into z-score
+    f2z = as.numeric(scale(f2)), # scale f2 into z-score
+    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+  ) |> 
+  dplyr::ungroup() # don't forget ungrouping
+```
+
+Let's check the mean and SD for both raw and normalised formant values: just see F1 for now. Note that the mean z-scores do not seem to look zero, but this is because computers are not very good at dealing with very small numbers (e.g., decimals) and some fluctuations occur in computing the values.
+
+```{r}
+# check mean and sd of raw/scaled F1 values for each speaker
+df_mid |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f1_mean = mean(f1),
+    f1_sd = sd(f1),
+    f1z_mean = mean(f1z),
+    f1z_sd = sd(f1z)
+  ) |> 
+  dplyr::ungroup() 
+```
+
+### Your turn
+
+Write a code chunk to inspect the mean and sd of raw/scaled F2 and F3 values for each speaker groups. Think how you group the data in ```dplyr::group_by()```.
+
+```{r}
+# check mean and sd of raw/scaled F2 values for each speaker group
+# ...
+
+# check mean and sd of raw/scaled F3 values for each speaker group
+# ...
+```
+
+## Visualisation
+
+Let's compare F1 values across participant groups for each segment (/l/ and /ɹ/). For clearer visualisation, the following codes define the range of y-axis between -4 and 4, and some extreme values have been omitted from the plot. 
+
+```{r warning=FALSE}
+# F1
+df_mid |> 
+  ggplot(aes(x = language, y = f1z)) +
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  ylim(c(-4, 4)) +
+  facet_grid(segment ~ vowel) +
+  labs(x = "L1", y = "F1 (z-normalised)", title = "F1 frequency")
+
+# F2
+df_mid |> 
+  ggplot(aes(x = language, y = f2z)) +
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  ylim(c(-4, 4)) +
+  facet_grid(segment ~ vowel) +
+  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 frequency")
+
+# F3
+df_mid |> 
+  ggplot(aes(x = language, y = f3z)) +
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  ylim(c(-4, 4)) +
+  facet_grid(segment ~ vowel) +
+  labs(x = "L1", y = "F3 (z-normalised)", title = "F3 frequency")
+```
+
+Overall, the data visualisation so far seems to suggest:
+
+1. It seems that vowel contexts may influence the F1 values, such that the /æ/ context yields the overall highest F1 values. The two groups of speakers do not seem to exhibit clear differences along the F1 dimension. 
+
+2. There also seems to be the effect of vowel context, in which F2 is overall highest in the /i/ context. L1 Japanese speakers seem to produce English liquids with higher F2 in the /i/ context and lower F2 in the /u/ context than L1 English speakers. 
+
+3. Whereas F3 seems comparable between the two speaker groups for /l/, L1 Japanese speakers seem to produce English /ɹ/ with a little higher F3 than L1 English speakers, although the magnitude of such between-group differences seem to vary depending on the vowel context. 
+
+### Your turn
+
+Data visualisation is a crucial aspect in data analysis and in open data science: Slight changes in data visualiastion would convey different messages to whoever see the plots. It is always beneficial (and fun!) to play around a little with ```ggplot```. So, let's stop for a moment and have a bit of fun in data visualisation. 
+
+Explore different ways to visualise the F1, F2 and F3 values. For example, you could:
+
+- throw different variables in the ```facet_wrap()``` command
+
+- plot raw F1, F2 and F3 values (i.e., simply typing ```f1``` instead of ```f1z```) to see how the two plots compare
+
+- adjust the ```alpha``` values to see what happens 
+
+- completely change the x/y axis labels
+
+- change the order of ```geom_jitter()```, ```geom_violin``` and ```geom_boxplot()```, and/or comment out some of them to disable
+
+- adjust the y-axis range by adjusting the numerics in ```ylim()```
+
+- etc etc...
+
+```{r}
+# try your visualisation
+# ...
+```
+
+
+# Statistical analysis
+
+The data visualisation seems to suggest some between-group differences, but it still remains unclear exactly how the two groups differ. Here, let's investigate this further using **linear-mixed effect modelling**. 
+
+Today, we will try to model the formant frequencies (i.e., ```f1z```, ```f2z```, and ```f3z```) as outcome variables as a function of predictor variables, including ```language```, ```vowel``` and the interaction between them (i.e., ```language:vowel```).
+
+We will model the formant frequencies separately for /l/ and /ɹ/ in order to reduce complexity in model output interpretation. This means that for F1 there will be two models (i.e., six models in total for F1, F2 and F3). 
+
+My usual modelling strategy is as follows:
+
+1. I first convert the predictor variables into **factor** variables. At the same time, I check how many levels there are for each predictor variable. Empty levels should be removed at this stage as this will influence the modelling outcomes. 
+
+2. I consider random effect structures. Complex random effects often make the models unable to converge, so I usually spend quite a lot of time adding and removing variables while referring to the summary table. 
+
+3. Once the full model is defined, compare the **full** and **nested** models for the statistical significance check. 
+
+## Preparation 1: Separating the data sets
+
+Let's separate the data sets into two: for /l/ and for /ɹ/.
+
+```{r}
+# /l/ model
+df_mid_L <- df_mid |> 
+  dplyr::filter(segment == "L")
+
+# /ɹ/ model
+df_mid_R <- df_mid |> 
+  dplyr::filter(segment == "R")
+```
+
+## Preparation 2: Converting variables into factor
+
+First, let's convert variable types into **factor**. Here is the code for the /l/ model.
+
+```{r}
+# ``language`` variable
+df_mid_L$language <- as.factor(df_mid_L$language)
+levels(df_mid_L$language)
+
+# ``vowel`` variable
+df_mid_L$vowel <- as.factor(df_mid_L$vowel)
+levels(df_mid_L$vowel)
+
+# ``speaker`` variable: a random effect
+df_mid_L$speaker <- as.factor(df_mid_L$speaker)
+levels(df_mid_L$speaker)
+
+# ``word`` variable: a random effect
+df_mid_L$word <- as.factor(df_mid_L$word)
+levels(df_mid_L$word)
+
+## so far so good, but in case there is any unused level, it can be removed using droplevels()
+df_mid_L$word <- droplevels(df_mid_L$word)
+```
+
+Similarly, for the /ɹ/ model:
+
+```{r}
+# ``language`` variable
+df_mid_R$language <- as.factor(df_mid_R$language)
+levels(df_mid_L$language)
+
+# ``vowel`` variable
+df_mid_R$vowel <- as.factor(df_mid_R$vowel)
+levels(df_mid_R$vowel)
+
+# ``speaker`` variable: a random effect
+df_mid_R$speaker <- as.factor(df_mid_R$speaker)
+levels(df_mid_R$speaker)
+
+# ``word`` variable: a random effect
+df_mid_R$word <- as.factor(df_mid_R$word)
+levels(df_mid_R$word)
+
+## so far so good, but in case there is any unused level, it can be removed using droplevels()
+df_mid_R$word <- droplevels(df_mid_R$word)
+```
+
+One important thing to define is the **coding scheme**. Here, I use **treatment coding** because it allows me to understand the model output rather intuitively. 
+
+This means that we need to make sure which level in a given variable serves as a **baseline** level. This can be checked via ```contrasts()``` function as below.
+
+```{r}
+# language variable
+contrasts(df_mid_L$language)
+
+# vowel variable
+contrasts(df_mid_L$vowel)
+```
+
+The /ɹ/ data set should have the same coding scheme. These overall suggest that the intercept corresponds to the z-scored formant frequency (along F1, F2 or F3) for L1 English speakers in the /æ/ context. The output table should show a difference from the baseline level. 
+
+## Building models: /l/
+
+Then, let's build a model for F1. We'll begin with the /l/ models.
+
+```{r}
+# F1 full model
+lm1_L_F1 <- lme4::lmer(f1z ~ 1 + language + vowel + language:vowel + (1 + vowel|speaker) + (1 + language|word), data = df_mid_L, REML = FALSE)
+```
+
+We get a **singular fit** warning. This indicates that correlations between random effect variables may not be modelled properly. Let's investigate the model summary to identify the possible causes.
+
+```{r}
+summary(lm1_L_F1)$varcor
+```
+
+The output above shows that the varying slope/intercept correlation for ```word``` is -1.00. This is usually a red flag indicating some estimation problems in the model. So we'll remove the varying slope for ```word``` depending on the ```language``` variable and rerun the new model below. 
+
+```{r}
+# F1 full model
+lm2_L_F1 <- lme4::lmer(f1z ~ 1 + language + vowel + language:vowel + (1 + vowel|speaker) + (1|word), data = df_mid_L, REML = FALSE)
+```
+
+Now we receive no warning messages, so looking positive. Let's investigate the model output.
+
+```{r}
+# random effect correlations
+summary(lm2_L_F1)$varcor
+
+# fixed effects
+summary(lm2_L_F1)$coefficients
+```
+
+Let's spend some time interpreting the fixed effects.
+
+1. **Intercept** shows an estimate of z-normalised F1 values for the baseline level: /l/ for L1 English speakers in the /æ/ condition. This is predicted to be approximately 0.74. 
+
+2. **languageJapanese** shows a difference in F1z values between L1 English (baseline) and L1 Japanese speakers **within the /æ/ context**. This means that, in the /æ/ context, L1 Japanese speakers exhibit the F1 of ca. 0.55 (i.e., 0.74 - 0.19). 
+
+3. **vowel/i/** shows a difference **within L1 English speakers** in F1z values between the /æ/ and /i/ contexts. This means that L1 English speakers produce English /l/ with the z-normalised F1 values of -0.35 in the /i/ context (i.e., 0.74 - 1.09).
+
+4. **vowel/u/** shows a difference, again, within L1 English speakers in F1z values **between the /æ/ and /u/ contexts**. So far, we know that the F1z value for L1 English speakers in the /æ/ context is 0.74: based on this, we can get the F1z value in the /u/ context, which should be approximately -0.65 (i.e., 0.74 - 1.39).
+
+So far, the only occasion when we talked about L1 Japanese speakers was for the **languageJapanese** term. The rest of the two interaction terms get us to obtain F1z values for L1 Japanese speakers in the /i/ and /u/ contexts.
+
+5. In order to obtain the estimated F1z value for L1 Japanese speakers in the /i/ context, we start with the intercept (L1 English speakers in /æ/: **0.74**), then we go onto the /i/ context (still within L1 English speakers: 0.74 **- 1.09**), where we go to L1 Japanese speakers by adding languageJapanese (i.e., 0.74 - 1.09 **- 0.19**). Finally, **languageJapanese:vowel/i/** acts like an adjustment for the interaction term, so that the calculation would be 0.74 - 1.09 - 0.19 + **0.09** = -0.45.
+
+6. Similarly, let's do the same to get estimated F1z values for L1 Japanese speakers in the /u/ context. Starting from the baseline (0.74), then going onto the /u/ context (i.e., 0.74 **- 1.39**), then onto Japanese (i.e., 0.74 - 1.39 **- 0.19**), and finally the **languageJapanese:vowel/u/** adjustment of - 0.01, resulting in 0.74 - 1.39 - 0.19 - **0.01** = -0.85.
+
+Let's compare these estimated values with the raw data. The model estimates can be obtained using the ```emmeans::emmeans()``` function.
+
+```{r}
+# raw data
+df_mid_L |> 
+  dplyr::group_by(language, vowel) |> 
+  dplyr::summarise(
+    mean_f1z = mean(f1z)
+  ) |> 
+  dplyr::ungroup()
+
+# estimated values from the model
+emmeans::emmeans(lm2_L_F1, ~ vowel | language)
+```
+
+The raw data do not always match the estimated values as there are some other factors that are not incorporated in the modelling. But overall, the estimated values are close to the raw values so we should be good to go. 
+
+## Significance testing through likelihood ratio tests (LRTs)
+
+Now that we better understand the model, let's check statistical significance of the fixed effects. A recommended approach is through model comparison via likelihood ratio tests (LRTs) using ```anova()``` function. Model comparison requires two models: a model with the effect of interested included and another (reduced/nested) model that excludes the effect to be tested. 
+
+Note also that, for model comparisons, each model needs to be estimated using **maximal likelihood (ML) estimation**. This corresponds to the ```REML = FALSE``` argument in the model. 
+
+### Interaction between ```language``` and ```vowel```
+
+First, let's test whether the interaction between ```language``` and ```vowel``` is statistically significant. For this, we compare two models: (1) a full model that contains the interaction term and (2) a reduced model without the interaction term. 
+
+```{r}
+# F1 full model
+lm2_L_F1 <- lme4::lmer(f1z ~ 1 + language + vowel + language:vowel + (1 + vowel|speaker) + (1|word), data = df_mid_L, REML = FALSE)
+
+# F1 nested model -- without interaction
+lm3_L_F1 <- lme4::lmer(f1z ~ 1 + language + vowel + (1 + vowel|speaker) + (1|word), data = df_mid_L, REML = FALSE)
+
+# model comparison
+anova(lm2_L_F1, lm3_L_F1, test = "Chisq")
+```
+
+Model comparison computes a *p* value, showing whether a fuller model improves the degree of model fit at statistically significant level. The output above shows a *p* value above 0.05, meaning that there is little evidence that the two models just compared here differ in the degree of model fit. In other words, the interaction between ```language``` and ```vowel``` does not contribute much to improve the model. 
+
+In this case, it is generally preferred to select more **parsimonious** (i.e., simpler) model because it is more economical. This means that there are now two fixed effects to test: ```language``` and ```vowel```. 
+
+### Main effect of ```language```
+
+Let's check whether ```language``` has an overall effect on the F1z values. 
+
+```{r}
+# F1 nested model -- without interaction
+lm3_L_F1 <- lme4::lmer(f1z ~ 1 + language + vowel + (1 + vowel|speaker) + (1|word), data = df_mid_L, REML = FALSE)
+
+# F1 nested model -- without language
+lm4_L_F1 <- lme4::lmer(f1z ~ 1 + vowel + (1 + vowel|speaker) + (1|word), data = df_mid_L, REML = FALSE)
+
+# model comparison
+anova(lm3_L_F1, lm4_L_F1, test = "Chisq")
+```
+
+The model comparison output suggests that ```lm3_L_F1``` (i.e., fuller model) has a better model fit at statistically significant level at *p* = 0.03. This means that the effect of ```language``` has an overall effect on the F1z values at statistically significant level.
+
+### Main effect of ```vowel```
+
+How about the effect of ```vowel```? Let's check this here:
+
+```{r}
+# F1 nested model -- without interaction
+lm3_L_F1 <- lme4::lmer(f1z ~ 1 + language + vowel + (1 + vowel|speaker) + (1|word), data = df_mid_L, REML = FALSE)
+
+# F1 nested model -- without vowel
+lm5_L_F1 <- lme4::lmer(f1z ~ 1 + language + (1|speaker) + (1|word), data = df_mid_L, REML = FALSE)
+
+# model comparison
+anova(lm3_L_F1, lm5_L_F1, test = "Chisq")
+```
+
+The model output still suggests that ```lm3_L_F1``` (i.e., fuller model) shows an improved model fit at statistically significant level of *p* < 0.001.
+
+## Post-hoc analysis
+
+Now that we know that ```language``` and ```vowel``` have a statistically significant effect on F1, let's further investigate where exactly the statistical siginificance is identified. The LRTs tell us which variable has an statistically significant effect, it does not tell us which levels. 
+
+For this, we can use the ```emmeans::emmeans()``` function for pairwise comparison. Although the ```language``` term is fairly obvious given there are only two levels, let's try this anyway to see what the output looks like. 
+
+```{r}
+# language effect
+emmeans::emmeans(lm3_L_F1, pairwise ~ language, adjust = "tukey")
+
+# vowel effect
+emmeans::emmeans(lm3_L_F1, pairwise ~ vowel, adjust = "tukey")
+```
+
+For the ```language``` effect, L1 English and L1 Japanese speakers differ very obviously. 
+
+For the ```vowel``` effect, it turns out that statistically siginificant differences are identified between (1) /æ/ and /i/ and (2) /æ/ - /u/, but not between /i/ and /u/. This suggests that it is /æ/ that drives the statistical significance of the ```vowel``` effect, which makes sense as it is the only low/open vowel for which F1 tends to be higher. 
+
+# Summary: F1 for English /l/
+
+- The best fit model:
+
+  - ```f1z ~ 1 + language + vowel + (1 + vowel | speaker) + (1 | word)```
+
+- Both ```language``` and ```vowel``` have an overall effect on the z-normalised F1 values for English /l/. 
+
+  - The ```language``` effect obviously results from the L1 English - L1 Japanese speakers difference.
+  
+  - The ```vowel``` effect seems to be driven by /æ/ that shows higher F1 than /i/ or /u/.
+
+# Statistics: Your turn!
+
+## Modelling other parameters
+
+So far, we have modelled F1 values for English /l/. How about F2 and F3? How about English /ɹ/? Follow the procedure commented below and complete an analysis of a parameter that you're interested in. 
+
+To reiterate: 
+
+- the data set for English /l/ is ```df_mid_L```
+
+- the data set for English /ɹ/ is ```df_mid_R```
+
+### Check the column names
+
+```{r}
+# check the column names
+# ...
+```
+
+### Convert each variable into factor
+
+```{r}
+# convert ``language`` variable into factor variable
+# ...
+
+# ``vowel`` variable 
+# ...
+# ...
+
+# ``speaker`` variable: a random effect
+# ...
+# ...
+
+# ``word`` variable: a random effect
+# ...
+# ...
+
+## so far so good, but in case there is any unused level, it can be removed using droplevels()
+## try it with the ```word``` variable
+# ...
+```
+
+### Check the baseline level 
+
+Our modelling is based on the treatment coding scheme, so let's check the baseline level. 
+
+```{r}
+# language variable
+# ...
+
+# vowel variable
+# ...
+```
+
+### Building a full model
+
+```{r}
+# ...
+```
+
+
+
+## Advanced: modelling English /l/ and /ɹ/ together
+
+We have decided to build separate models for English /l/ and /ɹ/. But it is also possible to model both together. How would you do it? How do such differences in modelling influence the way you formulate research questions?
+
+
+
+
+
