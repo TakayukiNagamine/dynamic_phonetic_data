@@ -25,11 +25,85 @@ cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 
 # Introduction
 
-Welcome to the workshop **Analysing contours in phonetic data: Dynamic analysis hands-on workshop using R**! In this workshop, we are going to study two main approachces to dynamic data analysis that are often used in phonetics. 
+Welcome to the workshop **Analysing contours in phonetic data: Dynamic analysis hands-on workshop using R**! In this workshop, we are going to study two main approachces to dynamic data analysis that are often used in phonetics.
 
-# The overarching question in this workshop
+The overarching aim of this workshop is to enable you to attempt different approaches to analysing phonetic data. Specifically, I aim to showcase the following contrasts in data analysis methods:
+
+## 1. **static** vs **dynamic** data analysis
+
+Static analysis is a common approach to formant analysis in phonetics research. It is often the case, for example, that we extract formant frequencies during a vocalic interval at a single point in time (e.g., segmental onset, temporal midpoint). This is a farily prevalent approach and it is useful when we try to understand general and abstract properties of segments.
+
+While static analysis is a somewhat easy and computationally less expensive approach, this inevitably involves some degrees of data loss/compression. Recent studies have increasingly demonstrated that **time-varying** properties in speech signals provide rather fine-grained phonetic details that may be important to better understand e.g., synchronic and diachronic variation and change, and cross-linguistic differences/influences in the acquisition of phonetics/phonology. And this is where dynamic analysis methods will come in handy, in which we directly model non-linearity in the data without having to compress/losing much information. My motto in dynamic analysis is **modelling what you see**.
+
+## 2. **top-down** vs **bottom-up** approaches to statistical modelling
+
+Another contrast that will be discussed in this workshop is the difference in the way we generate research hypothesis. Statistical modelling usually starts with formulating hypothesis and research questions while identifying key variables of interest, mainly through reviewing previous literature. In a way, this involves a **top-down** decision making, and hypothesis testing involves asking whether the key variables of interest have a (statistically) significant effect in distinguishing two different populations. 
+
+On the other hand, we may also be interested in seeing what the data show us without any prior knowledge. In other words, our study can be highly exploratory, and we sometimes prefer **data-driven** (or **bottom-up**) approach to identifying key variables of interest, which then feeds hypothesis/research question generations. The contrast between top-down and bottom-up approaches to data analysis influence the nature of research questions that can be asked using each method. 
+
+## Summary
+
+In the next two days, we will be mainly discussing four statistical methods corresponding to the contrasts above.
+
+1. **Linear Mixed-Effect Models** (LMEs)
+
+  - **static** and **top-down** approach
+
+
+2. **Principal Component Analysis** (PCA) 
+
+  - **static** and **bottom-up** approach
+
+
+3. **Generalised Additive Mixed-Effect Models** (GAMMs) 
+
+  - **dynamic** and **top-down** approach
+
+
+4. **Functional Principal Component Analysis** (FPCA)
+
+  - **dynamic** and **bottom-up** approach
+
+
+Note that I do not wish to advocate one method over another: the main objective of this workshop is for us to experience that the same sets of data can be analysed differently, that data visualisation can look different, and that we can ask different research questions from the same sets of data. 
+
+In the next section, I will introduce a problem that we will be working on in the course of the workshop. Given the nature of my expertise, I only manage to contexualise the workshop on a somewhat specific research topic, but hopefully the workshop offers something exciting for everyone! 
+
+# Contexualising the workshop
 
 ## L1 Japanese speakers' production of L2 English /l/ and /ɹ/
+
+I contexualise this workshop broadly in the second language (L2) speech learning. More specifically, my research addresses the ''Japanese /r/-/l/ problem'' (Flege, Aoyama & Bohn, 2021, p. 84). There is a long history of research on this topic, in which the first well-known, influential empirical studies could date back to 1970's (e.g., Goto et al., 1971; Miyawaki et al., 1975). Up until today, lots of researchers have worked on this topic to explain the substantial difficulty that L1 Japanese speakers have in perceiving and producing L2 English liquids (e.g., Sheldon & Strange, 1982; Flege et al., 1995; Bradlow et al., 1997; 1999; Iverson et al., 2003; Aoyama et al., 2004; Saito & Munro, 2014; Saito & van Poeteren, 2018; Shinohara & Iverson, 2018; Aoyama et al., 2019; Aoyama et al., 2023). 
+
+Here is a brief (and rather coarse) summary of the previous findings:
+
+- English /l ɹ/ are one of the most difficult (if not impossible) sounds for L1 Japanese speakers to acquire in a ''target-like'' manner.
+
+- Because Japanese has only one liquid phoneme /r/, they assimilate English /l/ and /ɹ/ into the Japanese /r/ category, leading to their substantial difficulty in (1) distinguishing the two phonemes and (2) producing them in  a ''target-like'' manner. 
+
+- Most notably, L1 Japanese speakers do not make a good use of the third formant (F3), which is an important cue especially for English /ɹ/.
+
+  - They tend to produce English /ɹ/ with somewhat higher F3 than L1 English speakers.
+  
+  - In contrast, they seem to be able to produce English /l/ and /ɹ/ with a ''target-like'' use of second formant (F2). 
+  
+  - Also, they use F2 to distinguish English /l/ and /ɹ/, as opposed to L1 English speakers who distinguish the two phonemes along F3.
+  
+  - Also also, the first formant (F1) is pretty much comparable between English /l/ and /ɹ/ produced by L1 Japanese and L1 English speakers.
+
+So, I hope you can see that lots of things happen in the spectral analysis! We'll have lots of things to say about these by the end of this two-day workshop. Also, I'm introducing one more variable of interest below.
+
+## Overarching question
+
+There have been quite a few studies investigating L1 Japanese speakers' production of L2 English liquids. To our surprise, however, there are not many studies in which the production data are analysed instrumentally using acoustic and/or articulatory methods. Previous instrumental acoustic studies would include: Flege et al. (1995), Saito and Munro (2014), Saito and van Poeteren (2018), Aoyama et al. (2019), Aoyama et al. (2023). This list is not exhaustive but does cover pretty much the main ones out there. 
+
+These studies commonly utilise **static** analysis in characterising the acoustic profiles of L1 Japanese speakers' production of L2 English liquids. Thanks to these studies, we now understand the general acoustic properties involved in the production. These studies, however, have not managed to explain **how** and **why** L1 Japanese speakers end up producing non-target-like L2 English liquids. 
+
+So, in this workshop, we will explore ways to better explain the mechanism as to why L1 Japanese speakers have substantial difficulty in producing L2 English liquids in a target-like manner based on acoustic data. To rephrase this into a question:
+
+**What is the underlying mechanism of the L1 Japanese speakers' difficulty in producing L2 English liquids in a target-like manner?**
+
+The key to the question would be fine-grained phonetic details. In particular, one aspect that is missing from the previous research is **the effects of vowel contexts**. I will not go into further details, but the vocalic coarticulation can be an important aspect in better understanding the liquid consonants across languages in general. Somewhat surprisingly, on the other hand, all previous research on this Japanese /r/-/l/ problem either (1) consider English /l/ and /ɹ/ production only in one vowel context, or (2) aggregate all the production tokens across different vowel contexts into broader categories of English /l/ and /ɹ/. So, there is a clear gap here, especially between phonetics research and second language speech learning research. And this is what we are going to explore in the next two days using different data analysis methods. 
 
 ## Workshop materials
 
@@ -44,6 +118,278 @@ Acoustical Society of America, 155*(1), 479–495. https://doi.org/10.1121/10.00
 Here is the URL for the online supplementary materials deposited on the following OSF repository:
 
 https://osf.io/2phx5/
+
+# Statistics basics
+
+Putting aside the (boring) introductory bits, let's start the fun part: data analysis! As mentioned earlier, we will build things up from the static analysis before going into the dynamic analysis. 
+
+I assume that people have varying degrees of experience in statistics. So, before diving straight into the LMEs, let's cover some basics of statistics. 
+
+## Mean and median: the distribution "centre"
+
+The most common parameters in describing a given set of data are **mean** and **median**. Assuming the normal distribution, the most common type of data distribution in statistics, both mean and median represent something like **the midpoint**. But they differ in a small detail:
+
+- **Mean**: the sum of all values divided by the number of values. Sensitive to extreme values.
+
+- **Median**: the middle value when lining up all the data points from the smallest to the greatest. More robust to extreme values than the mean.
+
+The figures below illustrate mean and median values in (1) normal and (2) right skewed distributions. You can see that mean and median values match on the normal distribution (left plot), whereas the mean score is 'attracted' towards the extreme values towards the left (right plot).  
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Load necessary packages
+library(tidyverse)
+library(ggpubr)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Generate data
+data_normal <- tibble(
+  distribution = "Normal",
+  values = rnorm(1000, mean = 50, sd = 10)  # Symmetric distribution
+)
+
+data_skewed <- tibble(
+  distribution = "Right-Skewed",
+  values = rlnorm(980, meanlog = 6, sdlog = 1.2)  # More extreme right skew
+)
+
+# compute summary statistics
+stats_normal <- data_normal |> 
+  dplyr::summarise(
+    mean_value = mean(values),
+    median_value = median(values)
+  )
+  
+stats_skewed <- data_skewed |> 
+  dplyr::summarise(
+    mean_value = mean(values),
+    median_value = median(values)
+  )
+
+# plot histograms with mean & median
+normal_plot <- ggplot(data_normal, aes(x = values)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "skyblue", color = "black", alpha = 0.4) +
+  geom_vline(data = stats_normal, aes(xintercept = mean_value, color = "Mean"), linetype = "dashed", linewidth = 1.2) +
+  geom_vline(data = stats_normal, aes(xintercept = median_value, color = "Median"), linetype = "solid", linewidth = 1.2) +
+  # facet_wrap(~ distribution, scales = "free") +
+  scale_color_manual(values = cbPalette) +
+  labs(title = "Normal Distribution",
+       x = "Value",
+       y = "Density",
+       color = "Statistic")
+
+skewed_plot <- ggplot(data_skewed, aes(x = values)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "skyblue", color = "black", alpha = 0.4) +
+  geom_vline(data = stats_skewed, aes(xintercept = mean_value, color = "Mean"), linetype = "dashed", linewidth = 1.2) +
+  geom_vline(data = stats_skewed, aes(xintercept = median_value, color = "Median"), linetype = "solid", linewidth = 1.2) +
+  # facet_wrap(~ distribution, scales = "free") +
+  scale_color_manual(values = cbPalette) +
+  xlim(c(0, 5000)) +
+  labs(title = "Skewed Distribution",
+       x = "Value",
+       y = "Density",
+       color = "Statistic")
+
+ggpubr::ggarrange(normal_plot, skewed_plot, common.legend = TRUE, legend = "right")
+```
+
+
+## Standard deviation: the distribution "spread"
+
+Along with the mean and median values, we often encounter **standard deviation (SD)**. SD captures the degree of ''spread'' of a given distribution, or the distance from the mean in the distribution. 
+
+SD tells us the degree of data coverage. For example, one of the distributions shown below has the mean of 50 and the SD of 30 (in the skyblue colour). This indicates that 68% of the data points are covered between -1SD and +1SD: that is, between 50 - 30 = **20** and 50 + 30 = **80**. 
+
+Similarly, 95% of the data points are included within ±2SDs. In the skyblue distribution below, 95% of the data are covered between 50 - 30 $\times$ 2 = **-10** and 50 + 30 $\times$ 2 = **110**. Usually, the larger SD is, the more spread the distribution looks. 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Load necessary packages
+library(tidyverse)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Generate three normal distributions with the same mean but different SDs
+data_sd <- tibble(
+  sd_5  = rnorm(1000, mean = 50, sd = 5),
+  sd_15 = rnorm(1000, mean = 50, sd = 15),
+  sd_30 = rnorm(1000, mean = 50, sd = 30)
+) %>%
+  pivot_longer(cols = everything(), names_to = "Standard_Deviation", values_to = "Value") %>%
+  mutate(Standard_Deviation = factor(Standard_Deviation, 
+                                     levels = c("sd_5", "sd_15", "sd_30"),
+                                     labels = c("SD = 5", "SD = 15", "SD = 30")))
+
+# Plot density curves for each SD
+ggplot(data_sd, aes(x = Value, fill = Standard_Deviation)) +
+  geom_density(alpha = 0.5) +  # Transparency for overlapping areas
+  geom_vline(xintercept = 50, linetype = "dashed", color = "black", linewidth = 1) +  # Mean line
+  geom_vline(xintercept = 0, linetype = "dotted", color = "black", linewidth = 0.5) +  # zero
+  scale_fill_manual(values = cbPalette) +  # Custom colors
+  labs(title = "Effect of Standard Deviation on Normal Distributions",
+       subtitle = "All distributions have the same mean (50) but different standard deviations",
+       x = "Value",
+       y = "Density",
+       fill = "Standard Deviation")
+
+```
+
+## Linear vs non-linear data
+
+Let's take a quick look into what it means by 'linear' and 'non-linear' data. Both are the terms used to explain the relationship between two variables. A linear relationship can be expressed as a straight line, whereas a non-linear relationship requires a curve (or a contour).
+
+The figure below exemplifies a linear and a non-linear relationship between X and Y. Generally, the plot with dots like this is called **'scatter plots'**. Here, the black dots show a linear relationship, where a certain amount of increase in X corresponds to another certain amount of increase in Y, and this X-Y correspondence is consistent throughout the range of X/Y values. This linear relationship can be expressed using a straight (black) line.
+
+The yello dots, on the other hand, show a non-linear relationship between X and Y variables. Although an increase in X corresponds to another increase in Y like in the linear data, the relationship is not consistent, especially towards the end of the x-axis. This relationship cannot be captured with a single line (compare the solid and dotted lines in yellow).
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Load necessary packages
+library(tidyverse)
+
+# Simulate a dataset
+set.seed(123)
+
+data <- tibble(
+  group = rep(c("A", "B"), each = 50),
+  x = rnorm(100, mean = 50, sd = 10),
+  y_linear = 2 * x + rnorm(100, sd = 5),         # Linear relationship
+  y_nonlinear = 0.05 * x^2 + rnorm(100, sd = 10) # Nonlinear relationship
+)
+
+# Compute basic statistics
+stats <- data |> 
+  dplyr::group_by(group) |>
+  dplyr::summarise(
+    mean_x = mean(x),
+    median_x = median(x),
+    sd_x = sd(x),
+    iqr_x = IQR(x)
+  )
+
+# Plot 1: Scatter plot with linear and nonlinear smoothers
+ggplot(data, aes(x = x)) +
+  geom_point(aes(y = y_linear, color = "Linear"), alpha = 0.7) +
+  geom_point(aes(y = y_nonlinear, color = "Nonlinear"), alpha = 0.7) +
+  geom_smooth(aes(y = y_linear, color = "Linear"), method = "lm", se = FALSE, linewidth = 1) +
+  geom_smooth(aes(y = y_nonlinear, color = "Nonlinear"), method = "loess", se = FALSE, linewidth = 1) +
+  geom_smooth(aes(y = y_nonlinear, color = "Nonlinear"), method = "lm", se = FALSE, linewidth = 0.5, linetype = "dashed") +
+  labs(title = "Linear vs. Nonlinear Relationships with Smoothers",
+       x = "X Variable",
+       y = "Y Variable") +
+  scale_color_manual(values = cbPalette)
+```
+
+
+## Data visualisation: scatter, box and violin plots
+
+Finally, let's take a quick look at data visualisation methods. I consider that data visualisation is the pivot in data analysis, and a great data analysis is facilitated by effecive data visualiastion. It is also a means to communicate the research findings with the audience. 
+
+Effective data visualisation often combines multiple types of plots. In my usual practice, I often combine three types of plots: **scatter**, **box** and **violin** plots.
+
+1. **Scatter plot**: In the figure below, the dots in skyblue colour represents individual data points. The mean value of the data is expressed as &#9650;.
+
+2. **Box plot**: Superimposed on them is the **box plot**. The box plot consists of a rectangle box, a solid horizontal line in the middle of the box, and 'whiskers' at the top and bottom of the box. Each of them represents key parameters of a distribution:
+
+- The solid horizontal line represents **median**.
+
+- Each end of the box represents **first** and **third quartiles**. Broadly speaking, you could understand that the box covers the middle 50% of the data, which is divided into half by the solid black line. The lower end of the box is the first quartile (Q1) and the upper end is the third quartile (Q3). Right in the middle is the median, which is the second quartile (Q2).
+
+- The length of the whiskers below and above the box is determined such that:
+
+  - Lower end: Q1 - 1.5 $\times$ IQR
+  
+  - Upper end: Q£ + 1.5 $\times$ IQR
+
+3. **Violin plot**: Finally, the violin plot shows the density of the data distribution. 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Load necessary packages
+library(tidyverse)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Generate data: Normal distribution with some random noise
+data <- tibble(
+  values = rnorm(1000, mean = 50, sd = 15)
+)
+
+# Calculate mean, median, and IQR for reference
+summary_stats <- data |> 
+  summarise(
+    mean_value = mean(values),
+    median_value = median(values),
+    q1 = quantile(values, 0.25),
+    q3 = quantile(values, 0.75),
+    iqr = q3 - q1
+  )
+
+# Plot: Show mean, median, and IQR with geom_point, geom_boxplot, and geom_violin
+ggplot(data, aes(x = 1, y = values)) +
+  # Add jittered points with cbPalette[3] (light blue)
+  geom_jitter(alpha = 0.4, color = cbPalette[3], width = 0.3, height = 0.1) +
+    # Add violin plot for distribution with cbPalette[6] (blue)
+  geom_violin(aes(x = 1, y = values), fill = cbPalette[6], alpha = 0.2) +
+  # Add boxplot for IQR with cbPalette[4] (green)
+  geom_boxplot(
+    aes(x = 1, y = values), 
+    width = 0.2, 
+    fill = "grey", 
+    alpha = 0.7, 
+    outlier.shape = NA  # Hide default outliers since we're adding points separately
+  ) +
+  # Highlight the mean with cbPalette[1] (black)
+  geom_point(
+    data = summary_stats, 
+    aes(x = 1, y = mean_value), 
+    color = cbPalette[1], 
+    size = 4, 
+    shape = 17
+  ) +
+  # Add lines for Q1 and Q3 (IQR) with cbPalette[7] (orange-red)
+  geom_segment(
+    data = summary_stats,
+    aes(x = 0.8, xend = 1.2, y = q1, yend = q1),
+    color = cbPalette[7], size = 1, linetype = "dashed"
+  ) +
+  geom_segment(
+    data = summary_stats,
+    aes(x = 0.8, xend = 1.2, y = q3, yend = q3),
+    color = cbPalette[7], size = 1, linetype = "dashed"
+  ) +
+    # Add text labels for mean, median, and IQR (Q1 and Q3)
+  geom_text(
+    data = summary_stats, 
+    aes(x = 1.25, y = median_value, label = paste("Median (Q2) =", round(median_value, 2))), 
+    color = cbPalette[1], size = 4, hjust = 0
+  ) +
+  geom_text(
+    data = summary_stats, 
+    aes(x = 1.25, y = q1, label = paste("Q1 =", round(q1, 2))),
+    color = cbPalette[7], size = 4, hjust = 0
+  ) +
+  geom_text(
+    data = summary_stats, 
+    aes(x = 1.25, y = q3, label = paste("Q3 =", round(q3, 2))),
+    color = cbPalette[7], size = 4, hjust = 0
+  ) +
+  labs(
+    title = "Mean, Median, and Interquartile Range",
+    subtitle = "Highlighted on Jittered, Boxplot, and Violin Plots",
+    x = "Distribution",
+    y = "Values"
+  ) +
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank())  # Hide x-axis labels
+
+
+```
+
+
+
+# Static analysis 1: Linear mixed-effect modelling
+
+With the quick review of the statistics basics in mind, let's first take a look at our first **top-down** approach to the formant data. We'll first try a **static** analysis using linear mixed-effect modelling.
 
 # Preliminaries
 
@@ -253,7 +599,7 @@ df_mid |>
 
 ### Your turn
 
-Write a code chunk to inspect the mean and sd of raw/scaled F2 and F3 values for each speaker groups. Think how you group the data in ```dplyr::group_by()```.
+Write a code chunk to inspect the mean and sd of raw/scaled F2 and F3 values for each **speaker** and for **speaker group**. Think how you group the data in ```dplyr::group_by()```.
 
 ```{r}
 # check mean and sd of raw/scaled F2 values for each speaker group
@@ -490,11 +836,36 @@ df_mid_L |>
   ) |> 
   dplyr::ungroup()
 
-# estimated values from the model
+# estimated marginal means from the model
 emmeans::emmeans(lm2_L_F1, ~ vowel | language)
 ```
 
 The raw data do not always match the estimated values as there are some other factors that are not incorporated in the modelling. But overall, the estimated values are close to the raw values so we should be good to go. 
+
+## Assumption check
+
+Statistical models usually rely on assumptions. Let's check whether the linear model we've just fit meets the **normality** and **constant variance** assumptions.
+
+When the model meets the normality assumption, the **residuals** are usually normally distributed. The residual is the error between an observed data value and a predicted value. Similarly, when the model satisfies the constant variance assumption (i.e., **heteroscedasticity**), the spread of residuals should be constant along the regression line.
+
+The first plot shows the histgram of residuals, and it seems to show that the residuals are normally distributed. The plot in the middle is called a **quantile-quantile (Q-Q) plot**, in which the residuals show a (nearly) linear relationships when satisfying the residual assumption. Finally, the **residual plot** on the right should show that the spread of the residuals is approximately equal across the range of fitted values without any particular linear trend. 
+
+The plots below suggest that our model ```lm2_L_F1``` meets all these assumptions. So far, so good. 
+
+```{r}
+par(mfrow = c(1, 3))
+
+# histogram
+hist(residuals(lm2_L_F1), col = "skyblue2")
+
+# Q-Q plot
+qqnorm(residuals(lm2_L_F1))
+qqline(residuals(lm2_L_F1))
+
+# residual plot
+plot(fitted(lm2_L_F1), residuals(lm2_L_F1))
+```
+
 
 ## Significance testing through likelihood ratio tests (LRTs)
 
@@ -519,7 +890,7 @@ anova(lm2_L_F1, lm3_L_F1, test = "Chisq")
 
 Model comparison computes a *p* value, showing whether a fuller model improves the degree of model fit at statistically significant level. The output above shows a *p* value above 0.05, meaning that there is little evidence that the two models just compared here differ in the degree of model fit. In other words, the interaction between ```language``` and ```vowel``` does not contribute much to improve the model. 
 
-In this case, it is generally preferred to select more **parsimonious** (i.e., simpler) model because it is more economical. This means that there are now two fixed effects to test: ```language``` and ```vowel```. 
+In this case, it is generally preferred to select more **parsimonious** (i.e., simpler) model because it is more economical in the sense that fewer predictors achieve the same (or even better) degree of model fits. This means that there are now two fixed effects to test: ```language``` and ```vowel```. 
 
 ### Main effect of ```language```
 
@@ -645,13 +1016,31 @@ Our modelling is based on the treatment coding scheme, so let's check the baseli
 # ...
 ```
 
+### Assumption check
+
+```{r}
+# ...
+```
+
+### Significance testing
+
+```{r}
+# ...
+```
 
 
 ## Advanced: modelling English /l/ and /ɹ/ together
 
 We have decided to build separate models for English /l/ and /ɹ/. But it is also possible to model both together. How would you do it? How do such differences in modelling influence the way you formulate research questions?
 
+# Wrap-up question
 
+Let's wrap up this session by discussing what research questions you could possibly ask based on the static analysis using linear mixed-effect models. Does it fully explain the mechanism underlying the Japanese /r/-/l/ problem? Do you struggle to disentangle something from something else? 
 
+# Session information
+
+```{r}
+sessionInfo()
+```
 
 
