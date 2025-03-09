@@ -1,5 +1,5 @@
 ---
-title: 'Day 1 Session 1: <br> Static spectral analysis <br> using linear mixed-effect modelling'
+title: 'Day 1 Session 1: <br> Static spectral analysis <br> using Linear Mixed-Effect Models'
 author: "Takayuki Nagamine"
 date: "`r Sys.Date()`"
 output: 
@@ -414,7 +414,7 @@ library(emmeans)
 
 A common approach to spectral analysis would be to extract formant frequencies from a single point in time and model them using linear mixed-effect models. Let's try this to see what the analysis offers.
 
-# Importing data set
+## Importing data set
 
 Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
 
@@ -624,7 +624,8 @@ df_mid |>
   scale_colour_manual(values = cbPalette) + 
   ylim(c(-4, 4)) +
   facet_grid(segment ~ vowel) +
-  labs(x = "L1", y = "F1 (z-normalised)", title = "F1 frequency")
+  labs(x = "L1", y = "F1 (z-normalised)", title = "F1 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
 
 # F2
 df_mid |> 
@@ -636,7 +637,8 @@ df_mid |>
   scale_colour_manual(values = cbPalette) + 
   ylim(c(-4, 4)) +
   facet_grid(segment ~ vowel) +
-  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 frequency")
+  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
 
 # F3
 df_mid |> 
@@ -648,7 +650,8 @@ df_mid |>
   scale_colour_manual(values = cbPalette) + 
   ylim(c(-4, 4)) +
   facet_grid(segment ~ vowel) +
-  labs(x = "L1", y = "F3 (z-normalised)", title = "F3 frequency")
+  labs(x = "L1", y = "F3 (z-normalised)", title = "F3 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
 ```
 
 Overall, the data visualisation so far seems to suggest:
@@ -866,7 +869,6 @@ qqline(residuals(lm2_L_F1))
 plot(fitted(lm2_L_F1), residuals(lm2_L_F1))
 ```
 
-
 ## Significance testing through likelihood ratio tests (LRTs)
 
 Now that we better understand the model, let's check statistical significance of the fixed effects. A recommended approach is through model comparison via likelihood ratio tests (LRTs) using ```anova()``` function. Model comparison requires two models: a model with the effect of interested included and another (reduced/nested) model that excludes the effect to be tested. 
@@ -1043,4 +1045,7 @@ Let's wrap up this session by discussing what research questions you could possi
 sessionInfo()
 ```
 
+```{r include=FALSE}
+save(df_mid, file = "data/df_mid.rda")
+```
 

@@ -1,0 +1,357 @@
+---
+title: 'Day 1 Session 2: <br> Dynamic spectral analysis <br> using Generalised Additive Mixed-Effect Models (GAMMs)'
+author: "Takayuki Nagamine"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+    # html_document: 
+    # toc: true
+    # toc_float: true
+    # number_sections: true
+---
+
+```{r include=FALSE}
+library(rmdformats)
+library(tidyverse)
+
+# setting the plot theme globally
+theme_set(theme_classic())
+
+# define colour-blind-friendly colour palette 
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+"#D55E00", "#CC79A7")
+```
+
+# Introduction
+
+In the previous sesseion, we tried running a statistical analysis using **linear mixed-effect modelling**. It was a **static** analysis based on a single point measurement of formant frequencies to characterise differences of the English /l/ and /ɹ/ quality produced by L1 Japanese and L1 English speakers. 
+
+While we observed some key between-group differences in the static data, the static analysis did not allow us to answer **why** such differences would occur. Specifically, it was not very unclear whether it is just the height of the formant frequencies that are different, or the formant frequency difference is just a small part of a broader, more fundamental difference. 
+
+More crucially, analysing the liquid consonants based on the static analysis lacks the consideration that **English liquid consonants are inherently dynamic**. This means that their spectral properties vary as a function of time, and a single-point measurement of formant frequencies is not adequate in characterising the English liquid quality. Also, English liquids show a strong interaction with the neighbouring vowels, so we need to consider how English liquids are coarticulated with the following vowel. 
+
+Taken together, we need to take the **temporal** dimension into account when analysing English liquids. The possible liquid-vowel interaction may mean that L1 Japanese speakers may produce the sequence of liquid consonant and a vowel with a different interaction pattern from that of L1 English speakers. 
+
+In this session, therefore, let's try modelling the whole **formant contours** directly using Generalised Additive Mixed-Efefct Models (GAMMs).
+
+# Generalised Additive Mixed-Effect Models (GAMMs)
+
+# Preliminaries
+
+## Installing/loading packages
+
+As always, let's first install and load R packages that we are using in the static analysis section. The installation commands have been commented out, but please uncomment them and install the packages if you do not have them on your machine yet.  
+
+```{r warning=FALSE, message=FALSE}
+# installing packages
+# install.packages("tidyverse")
+# install.packages("mgcv")
+# install.packages("itsadug")
+# install.packages("tidymv")
+# install.packages("tidygam")
+
+# importing packages
+library(tidyverse)
+library(mgcv)
+library(itsadug)
+# library(tidymv) # for 'get_gam_predictions'
+library(tidygam) # for 'get_gam_predictions'
+source("https://raw.githubusercontent.com/soskuthy/gamm_intro/master/gamm_hacks.r")
+```
+
+
+## Importing data set
+
+Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
+
+```{r message=FALSE}
+# import the csv file "initial.liquid.dynamic.csv" from the "data" directory and save it as "df_dyn"
+df_dyn <- readr::read_csv("data/initial.liquid.dynamic.csv")
+```
+
+# Check data
+
+Similarly to the static analysis, let's spend some time inspecting the data set using ```colnames()```. 
+
+```{r}
+# Let's check what columns the data frame contains
+colnames(df_dyn)
+```
+
+The majority of the variables in the data set are quite similar to the static data set. The dynamic data set also contains bark-normalised formant frequencies, but we won't be using them here. 
+
+The crucial difference between the static and the dynamic data sets is the ```time``` column. As I explained earlier, the crucial aspect in the dynamic analysis is the ```time``` dimension, and we are interested in the time-varying characteristics in formant trajectories. 
+
+Let's look into the ```time``` column in more detail. The following code displays what information is contained in the ```time``` column.
+
+```{r}
+df_dyn |> 
+  dplyr::group_by(time) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+```
+
+According to the code above, the ```time``` dimension contains numbers from 0 to 100 with an increment of 10. The data set expresses the time dimension **proportionally** from 0% to 100%. This means that the beginning of an interval corresponds to 0% time point, and then we get time points 10%, 20%, 30% etc as time goes by, until 100% that corresponds to the end of an interval. 
+
+The next question here: what **interval** are we talking about? In the introduction section, I talked about the interaction between the liquid consonant and the following vowel. For this reason, we will treat the liquid and vowel intervals as one whole entity, in which each interval contains movement of the formant trajectories throughout the word-initial liquid and vowel intervals. This means that **0% time point corresponds to the onset of the word-initial liquid**, and **100% time point corresponds to the end point of the following vowel**.
+
+# Data wrangling
+
+## Omitting irrelavent columns
+
+Let's tidy up the data a little bit to avoid further confusion. As done with the static anlaysis, we will try to remove columns that are no longer necessary. The three columns, ```IsApproximant```, ```IsAcoustic```, and ```omit``` can safely be removed, as well as some spectral measures including Bark-normalised and distance measures as they can be confusing later on. 
+
+```{r}
+# Let's check the number of "approximant" tokens
+df_dyn |> 
+  dplyr::group_by(IsApproximant) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Let's check the number of tokens of good recording quality
+df_dyn |> 
+  dplyr::group_by(IsAcoustic) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# How about 'omit'?
+df_dyn |> 
+  dplyr::group_by(omit) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Remove columns that we no longer need
+df_dyn <- df_dyn |> 
+  dplyr::select(-c(IsApproximant, IsAcoustic, omit, Barkf1, Barkf2, Barkf3, Barkf2f1, Barkf3f2, f2f1, f3f2))
+```
+Let's check the column names again.
+
+```{r}
+colnames(df_dyn)
+```
+
+Note that we have a column called ```context```: this can be useful for grouping so let's keep them. But we can convert them into IPA symbols for a more intuitive representation:
+
+```{r}
+# convert the ARPABET notation into IPA symbols
+df_dyn <- df_dyn |> 
+  dplyr::mutate(
+    context = case_when(
+      context == "AE" ~ "/æ/",
+      context == "IY" ~ "/i/",
+      context == "UW" ~ "/u/"
+    )
+  )
+```
+
+## Checking the number of participants, tokens...
+
+Let's also obtain some descriptive statistics here. Note that we need to divide the number of rows by 11 to obtain the accurate number of tokens, as one token now has 11 time points.
+
+```{r}
+# number of participants
+df_dyn |> 
+  dplyr::group_by(language) |> 
+  dplyr::summarise(n = n_distinct(speaker)) |> 
+  dplyr::ungroup()
+
+# number of tokens per segment
+df_dyn |> 
+  dplyr::group_by(segment) |> 
+  dplyr::summarise(n = n()/11) |> # divide by 11 time points
+  dplyr::ungroup()
+```
+
+### Your turn
+
+Similarly in the static analysis, please explore the data a little to understand the data better.
+
+You can start with checking the column names to see what variables are available in the data set. Then, use ```dplyr::group_by()```, ```dplyr::summarise()``` and ```dplyr::ungroup()``` functions to inspect the data.
+
+```{r}
+# Check data further
+# ...
+```
+
+# Data visualisation
+
+## Scaling formant frequencies
+
+Now, let's visualise the dynamic data. The basic procedure is the same as in the static analysis; We first apply z-score normalisation to the formant frequencies to make sure that formant values are comparable across speakers. 
+
+```{r}
+df_dyn <- df_dyn |> 
+  dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
+  dplyr::mutate(
+    f1z = as.numeric(scale(f1)), # scale f1 into z-score
+    f2z = as.numeric(scale(f2)), # scale f2 into z-score
+    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+  ) |> 
+  dplyr::ungroup() # don't forget ungrouping
+```
+
+## Descriptive statistics
+
+Let's check the mean and SD for both raw and normalised formant values: just see F1 for now. Note that the mean z-scores do not seem to look zero, but this is because computers are not very good at dealing with very small numbers (e.g., decimals) and some fluctuations occur in computing the values.
+
+```{r}
+# check mean and sd of raw/scaled F1 values for each speaker
+df_dyn |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f1_mean = mean(f1),
+    f1_sd = sd(f1),
+    f1z_mean = mean(f1z),
+    f1z_sd = sd(f1z)
+  ) |> 
+  dplyr::ungroup() 
+```
+
+### Your turn
+
+Write a code chunk to inspect the mean and sd of raw/scaled F2 and F3 values for each **speaker** and for **speaker group**. Think how you group the data in ```dplyr::group_by()```.
+
+```{r}
+# check mean and sd of raw/scaled F2 values for each speaker group
+# ...
+
+# check mean and sd of raw/scaled F3 values for each speaker group
+# ...
+```
+
+
+## Visualisation
+
+### raw trajectories
+
+Let's visualise the formant trajectories here. In the dynamic analysis, it is almost always the case that we take the **time** dimension on the x-axis and the dependent variable on the y-axis. This allows us to see how e.g., F1 changes over time. 
+
+We also make sure about the variable **grouping** to tell ```ggplot2``` how to organise the data. This can be done via ```group``` argument in the ```geom``` function. Each formant trajectory should come from one audio file, which is stored in the ```file``` column. We use this information for grouping. 
+
+```{r warning=FALSE}
+# F1 - raw trajectories
+df_dyn |> 
+  ggplot(aes(x = time, y = f1z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F1 (z-normalised)", title = "time-varying change in F1 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### smooths
+
+While I usually prefer just plotting raw trajectories because it is faithful to the nature of the data, I must admit that it is sometimes very difficult to see what's going on there. 
+
+If you prefer, we could also just plot **smooths** to highlight the nonlinear between-group difference. The code below adds smoothed F1z trajectories to the raw data we just plotted (but I have commented out the raw trajectories for now). Note the difference in grouping; we used the ```file``` variable for the raw trajectories, but for smooths we need to use the ```language``` variable because we would like one smoothed trajectory for each L1 group. 
+
+```{r warning=FALSE}
+# F1 - smooths
+df_dyn |> 
+  ggplot(aes(x = time, y = f1z)) +
+  # geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  # geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.2, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F1 (z-normalised)", title = "smoothed time-varying change in F1 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### Your turn
+
+Please try writing a code chunk to visualise (1) raw and (2) smoothed trajectories. You could try combining them both, too. Please feel free to explore your favourite colour schemes! 
+
+```{r warning=FALSE}
+# F2 - raw trajectory
+# ...
+
+# F2 - smooths
+# ...
+
+```
+
+
+```{r warning=FALSE}
+# F3 - raw trajectory
+# ...
+
+# F3 - smooths
+# ...
+
+```
+
+
+
+# Statistical analysis: GAMMs
+
+## Modelling F2 trajectory
+
+I hope that you have enjoyed data visualisation! You'd know if you have tried plotting **F2**, but it seems that the F2 trajectories show very interesting between-group difference. 
+
+This is also a very interesting dimension to explore from the theoretical point of view, because previous research has claimed that L1 Japanese speakers would make it **easier** to acquire the use of F2 in a target-like manner. But the dynamic data suggests that L1 Japanese speakers do something really different from L1 English speakers. Let's take a look at trajectories first below:
+
+```{r warning=FALSE}
+# F2
+df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "raw/smoothed time-varying change in F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+L1 English speakers follow somewhat consistent patterns across vowel contexts for both English /l/ and /ɹ/. They all start at a lower F2 at the beginning of the liquid onset (= 0%). The trajectories then go higher up to the maximal point in the middle of the interval (= around 50%). After reaching the highest peak, the trajectories go down towards the end of the interval (= 100%). Although there are some differences in terms of the timing that they achieve the maximal point, the overall patterns are fairly consistent. 
+
+L1 Japanese speakers, on the other hand, show distinct trajectory patterns across vowel contexts. In the /æ/ context, both English /l/ and /ɹ/ trajectories show an almost monotonic, linear decrease from the liquid onset (= 0%) towards the vowel offset (= 100%). The trajectories in the /u/ context are also similar. In these two vowel contexts, the English /ɹ/ trajectories seem to mark the highest point at around 25% time point, but it is not as pronounced as that of L1 English speakers. 
+
+Their /i/ trajectories, on the other hand, show a similar pattern to that of L1 English speakers. They start at a lower F2 value at the liquid onset (= 0%), go higher up, and then show a slight decrease towards the end of the interval. The timing of the maximal point, however, is quite early (i.e., at around 40-45% time point) compared to L1 English speakers. 
+
+### Your turn
+
+Please compare and discuss the static and dynamic plots for F2. 
+
+**Note**: The static analysis is based on the F2 measurement at the **liquid midpoint**. The dynamic analysis shows time-varying changes in F2 over **liquid-vowel** interval. 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=8}
+# load static data
+load(file = "data/df_mid.rda")
+
+# F2 static
+f2_static <- df_mid |> 
+  ggplot(aes(x = language, y = f2z)) +
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  ylim(c(-4, 4)) +
+  facet_grid(segment ~ vowel) +
+  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 liquid midpoint") +
+  theme(strip.text.y = element_text(angle = 0))
+
+# F2 dynamic
+f2_dynamic <- df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "F2 change over liquid-vowel interval") +
+  theme(strip.text.y = element_text(angle = 0))
+
+ggpubr::ggarrange(f2_static, f2_dynamic, ncol = 1)
+```
+
+
