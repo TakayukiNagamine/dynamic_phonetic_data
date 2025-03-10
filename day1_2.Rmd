@@ -555,45 +555,87 @@ As explained earlier, a GAM model can take two kinds of predictor variables: **p
 
 The new addition from the linear model would be **smooth terms** which allow GA(M)Ms to fit non-linear effects as a function of a variable. Smooth terms are notated as ```s()```. This usually corresponds to the **shape** of the trajectory. And in the model above, you can see a series of ```s()``` terms, including ```s(time)```, ```s(time, by = language)``` and ```s(time, by = context)```. We will cover the specifics later, but basically these instruct GAM to model **the non-linearity seen in F2 (dependint variable) as a function of time**. 
 
-## Let's model F2 trajectory
+# Let's model F2 trajectory
 
-Let's try modelling a simple GAMMs model based on our data set. 
+Let's try modelling a simple GAMMs model based on our data set. We start with a simple GAM model to model the effects of ```language``` and ```context``` on the F2 trajectory. 
 
-<!-- In modelling, let's take a similar approach to the static analysis. That is, we will fit a separate model for each combination of ```liquid``` and ```context``` in order to simplify the model interpretation. We'll first subset the data and then convert the variables into factor, a similar procedure to the static analysis.  -->
+As usual, we'll first subset the data and then convert the variables into factor, a similar procedure to the static analysis. 
 
-<!-- ```{r} -->
-<!-- # subsetting data -- for /l/ -->
-<!-- df_dyn_L <- df_dyn |> -->
-<!--   dplyr::filter(liquid == "L") -->
+```{r}
+# subsetting data -- for /l/
+df_dyn_L <- df_dyn |>
+  dplyr::filter(liquid == "L")
 
-<!-- # language variable -->
-<!-- df_dyn_L$language <- as.factor(df_dyn_L$language) -->
-<!-- levels(df_dyn_L$language) -->
+# language variable
+df_dyn_L$language <- as.factor(df_dyn_L$language)
+levels(df_dyn_L$language)
 
-<!-- # vowel (context) variable -->
-<!-- df_dyn_L$context <- as.factor(df_dyn_L$context) -->
-<!-- levels(df_dyn_L$context) -->
+# vowel (context) variable
+df_dyn_L$context <- as.factor(df_dyn_L$context)
+levels(df_dyn_L$context)
 
-<!-- # speaker variable -- random effect -->
-<!-- df_dyn_L$speaker <- as.factor(df_dyn_L$speaker) -->
-<!-- levels(df_dyn_L$speaker) -->
+# speaker variable -- random effect
+df_dyn_L$speaker <- as.factor(df_dyn_L$speaker)
+levels(df_dyn_L$speaker)
 
-<!-- # word variable -- random effect -->
-<!-- df_dyn_L$word <- as.factor(df_dyn_L$word) -->
-<!-- levels(df_dyn_L$word) -->
-<!-- ``` -->
+# word variable -- random effect
+df_dyn_L$word <- as.factor(df_dyn_L$word)
+levels(df_dyn_L$word)
+```
 
-<!-- Let's first just try modelling ```f2z``` for English /l/ in the linear model notation that we are familiar with. That is, we will model the ```f2z``` values as a function of (1) language and (2) vowel context.  -->
+## A simple (linear) model only with parametric terms
 
-<!-- ```{r} -->
-<!-- # first model -- linear model -->
-<!-- m1 <- mgcv::bam(f2z ~ language + context, data = df_dyn_L, method = "fREML") -->
+What if we just model F2 only with parametric terms? Let's just start with **language** variable.
 
-<!-- # model summary -->
-<!-- summary(m1) -->
-<!-- ``` -->
+```{r}
+# fit a model with parametric terms only
+m1 <- bam(f2z ~ language, data = df_dyn_L, method = "fREML")
 
-<!-- The output looks pretty much the same with the linear mixed-effect modelling using ```lme4::lmer()```.  -->
+# model summary
+summary(m1)
+```
+
+
+The model output displays a section called **Parametric coefficients** which shows how each of the paraemetric term has an overall effect on the F2 values. But overall, the output looks pretty much the same with the linear mixed-effect modelling using ```lme4::lmer()```. 
+
+## Adding non-linearity
+
+Our first model ```m1``` models the constant effect on the ```language``` variable on the F2 values; that is, we could ask whether L1 English and L1 Japanese speakers are overall different in F2 frequencies. But also, as we saw earlier in data visualisation, there was a lot going on beyond the constant between-group difference. 
+
+Let's extend the model so that we can model the non-linear between-group difference. Here, we add a new **smooth** term ```s(time)``` that allows us to model the non-linear difference between L1 English and L1 Japanese speakers in the F2 values over **time**.
+
+```{r}
+# a model with a parametric and a smooth term
+m2 <- bam(f2z ~ language + s(time, by = language), data = df_dyn_L, method = "fREML")
+
+# model summary
+summary(m2)
+```
+
+The top half of the model summary looks similar to the one for ```m1```. A new addition here is **Approximate significance of smooth terms**; this is where we can evaluate the performance of the smooth terms. There are two columns that you may not be familar with, but **edf** would be the most important here.
+
+- **edf** stands for **e**ffective **d**egree of **f**reedom. This signifies how many parameters are needed to represent the smooth.
+
+  - Edf indexes the degree of non-linearity of the smooth. An edf value closer to 1 means that the pattern modelled with ```s()``` is linear. 
+
+## Visualising GAM
+
+Unlike linear models, interpretation of non-linear patterns is quite tricky and complicated. So, data visualiastion is **crucial** in the modelling of non-linear relationships. Let's visualise the GAM model that we just modelled.
+
+The package ```itsadug``` lets you visualise the F2 smooths for each language group (L1 English and L1 Japanese speakers) as follows:
+
+```{r}
+itsadug::plot_smooth(m2, view = "time", plot_all = "language", rug = FALSE)
+```
+
+It is also possilbe to visualise the *difference* in F2 trajectories between the two speaker groups:
+
+```{r}
+itsadug::plot_diff(m2, view = "time", com = list(language = c("English", "Japanese")))
+```
+
+We start to see some interesting bits here. The first plot suggests that, overall, L1 Japanese speakers (in light blue) show a flat F2 trajectory compared to L1 English speakers (in light pink). The difference between the two trajectories lie almost throughout the time course; the two trajectories cross over each other at approximately 40% time point, where we find little difference, but otherwise the confidence interval for the **difference smooth** is not overlapping zero consistentely. 
+
 
 <!-- # Full GAMMs model for F2z -->
 
