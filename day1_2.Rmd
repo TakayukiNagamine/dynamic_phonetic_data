@@ -286,9 +286,7 @@ Please try writing a code chunk to visualise (1) raw and (2) smoothed trajectori
 
 
 
-# Statistical analysis: GAMMs
-
-## Modelling F2 trajectory
+# How do we model F2 trajectory?
 
 I hope that you have enjoyed data visualisation! You'd know if you have tried plotting **F2**, but it seems that the F2 trajectories show very interesting between-group difference. 
 
@@ -354,4 +352,400 @@ f2_dynamic <- df_dyn |>
 ggpubr::ggarrange(f2_static, f2_dynamic, ncol = 1)
 ```
 
+# From linear to non-linear modelling: Introducting Generalised Additive Mixed Effects Models (GAMMs)
+
+## Modelling non-linearity in the data
+
+Here, we would like to model the formant trajectory directory without relying just on a straight line. This can be illustrated by  the plot below that shows the time-varying transition of F2 signals (in Hz) for the word *reap* produced by an L1 Japanese speaker.
+
+As you can see in the plot below, the linear regression line (in yellow) does not capture the overall trend of the formant trajectory anymore. What we would ideally like is the non-linear curve in skyblue.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df_dyn |> 
+  dplyr::filter(file == "JP_3bcpyh_reap027_0001") |> 
+  ggplot(aes(x = time, y = f2)) +
+  geom_point(size = 5, shape = 1) +
+  geom_smooth(method = "lm", se = FALSE, colour = cbPalette[2]) +
+  geom_smooth(method = "gam", se = FALSE, colour = cbPalette[3]) +
+  labs(x = "Proportional time (%)", y = "F2 (Hz)", title = "F2 dynamics")
+```
+
+One solution to the non-linear modelling is via **Generalised Additive (Mixed Effects) Models: GA(M)Ms**. While GA(M)Ms are similar with the linear models in that they both can capture linear trends with **parametric terms**, GA(M)Ms also incorporate **smooth terms** that can capture non-linear relationships between the variables. Put it simply, GA(M)Ms is a combination (i.e., **addition**) of multiple **(smooth) functions**, which can be notated as:
+
+$y = \alpha + f(x) + \epsilon$
+
+where $f(x)$ just means **some function of $x$** and $\epsilon$ indicates an error term. 
+
+## Basis functions
+
+GA(M)Ms models the non-linearity in the data by combining multiple **basis functions**. The number of basis functions is related to the **smoothness/wiggliness** of a given GA(M)Ms model, such that, for example, there is more room for a GA(M)Ms trajectory to be smoother if the number of basis functions is high. Smoothness/wiggliness of a GA(M)Ms model is determined by the **smoothing parameters**, which GAM automatically estimate based on the data, and the number of basis function sets an upper limit as to how smooth a model can be.
+
+What you can adjust in your model is the number of **knots**. A knot is a converging point between each of the basis functions, and the number of knots corresponds to **the number of basis functions + 1**. 
+In the plot below, I show ten basis functions based on **cubic regression splines**, which means that there are **eleven** knots that I specify in the GAM model. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(mgcv)
+
+# Simulate some data
+set.seed(123)
+df <- tibble(
+  x = seq(0, 10, length.out = 200),  # Predictor variable
+  y = sin(x) + rnorm(200, sd = 0.2)   # Non-linear relationship with noise
+)
+
+# Fit a GAM model using cubic regression splines
+gam_model_cr <- gam(y ~ s(x, k = 11, bs = "cr"), data = df, method = "REML")
+
+# Extract basis functions
+basis_cr <- predict(gam_model_cr, type = "lpmatrix")  # Design matrix of basis functions
+
+basis_df_cr <- as_tibble(basis_cr) |> 
+  mutate(x = df$x) |> 
+  rename(
+    Intercept = `(Intercept)`
+  ) |> 
+  pivot_longer(-x, names_to = "basis_function", values_to = "value") |> 
+  mutate(
+    basis_function = factor(basis_function, levels = c("Intercept", "s(x).1", "s(x).2", "s(x).3", "s(x).4", "s(x).5", "s(x).6", "s(x).7", "s(x).8", "s(x).9", "s(x).10"))
+  )       
+
+# Extract overall smooth predictions
+df <- df |> 
+  mutate(smooth = predict(gam_model_cr))  # Predicted smooth values
+
+# Define color palette
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", 
+               "#F0E442", "#0072B2", "#D55E00", "#CC79A7",
+               "#999999", "#663399", "#8B0000")  # 11 colors for basis functions
+
+# Superimposed plot
+ggplot() +
+  # Basis functions
+  geom_line(data = basis_df_cr, aes(x = x, y = value, color = basis_function), size = 1, alpha = 0.7) +
+  scale_color_manual(values = cbPalette) +
+  # Raw data points
+  geom_point(data = df, aes(x = x, y = y), alpha = 0.3) +
+  # Smooth function (final sum of basis functions)
+  geom_line(data = df, aes(x = x, y = smooth), color = "#D55E00", size = 1.5, alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Superimposed Basis Functions & Final Smooth Curve",
+       subtitle = "Cubic Regression Splines (CR), k = 11",
+       x = "x",
+       y = "y")
+```
+
+There are a few types of basis functions that can be specified in the GAMMs model. Common ones include **thin plate regression splines (tp)** and **cubic regression splines (cr)**. They look quite different from each other, but resulting final smooth curve ends up very similar.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=8}
+library(tidyverse)
+library(mgcv)
+
+# Simulate some data
+set.seed(123)
+df <- tibble(
+  x = seq(0, 10, length.out = 200),  # Predictor variable
+  y = sin(x) + rnorm(200, sd = 0.2)   # Non-linear relationship with noise
+)
+
+# Fit a GAM model using cubic regression splines
+gam_model_cr <- gam(y ~ s(x, k = 11, bs = "cr"), data = df, method = "REML")
+
+# Extract basis functions
+basis_cr <- predict(gam_model_cr, type = "lpmatrix")  # Design matrix of basis functions
+
+basis_df_cr <- as_tibble(basis_cr) |> 
+  mutate(x = df$x) |> 
+  rename(
+    Intercept = `(Intercept)`
+  ) |> 
+  pivot_longer(-x, names_to = "basis_function", values_to = "value") |> 
+  mutate(
+    basis_function = factor(basis_function, levels = c("Intercept", "s(x).1", "s(x).2", "s(x).3", "s(x).4", "s(x).5", "s(x).6", "s(x).7", "s(x).8", "s(x).9", "s(x).10"))
+  )       
+
+# Extract overall smooth predictions
+df_cr <- df |> 
+  mutate(smooth = predict(gam_model_cr))  # Predicted smooth values
+
+# Fit a GAM model using thin plate spline
+gam_model_tp <- gam(y ~ s(x, k = 11, bs = "tp"), data = df, method = "REML")
+
+# Extract basis functions
+basis_tp <- predict(gam_model_tp, type = "lpmatrix")  # Design matrix of basis functions
+
+basis_df_tp <- as_tibble(basis_tp) |> 
+  mutate(x = df$x) |> 
+  rename(
+    Intercept = `(Intercept)`
+  ) |> 
+  pivot_longer(-x, names_to = "basis_function", values_to = "value") |> 
+  mutate(
+    basis_function = factor(basis_function, levels = c("Intercept", "s(x).1", "s(x).2", "s(x).3", "s(x).4", "s(x).5", "s(x).6", "s(x).7", "s(x).8", "s(x).9", "s(x).10"))
+  )       
+
+# Extract overall smooth predictions
+df_tp <- df |> 
+  mutate(smooth = predict(gam_model_tp))  # Predicted smooth values
+
+# Define color palette
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", 
+               "#F0E442", "#0072B2", "#D55E00", "#CC79A7",
+               "#999999", "#663399", "#8B0000")  # 11 colors for basis functions
+
+# Superimposed plot
+cr_plot <- ggplot() +
+  # Basis functions
+  geom_line(data = basis_df_cr, aes(x = x, y = value, color = basis_function), size = 1, alpha = 0.7) +
+  scale_color_manual(values = cbPalette) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Cubic Regression Splines (CR), k = 11",
+       x = "x",
+       y = "y")
+
+tp_plot <- ggplot() +
+  # Basis functions
+  geom_line(data = basis_df_tp, aes(x = x, y = value, color = basis_function), size = 1, alpha = 0.7) +
+  scale_color_manual(values = cbPalette) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Thin Plate Regression Splines (TP), k = 11",
+       x = "x",
+       y = "y")
+
+ggpubr::ggarrange(cr_plot, tp_plot, ncol = 1, common.legend = TRUE, legend = "right")
+```
+
+## Parametric and smooth terms
+
+Let's now go back again to our data set and see how a GAMMs model can be specified on R. For example, the model below is a GAM model (without a random effect) that captures time-varying non-linearity along the F2 dimension:
+
+```{r include=FALSE}
+# subsetting data -- for /l/
+df_dyn_L <- df_dyn |>
+  dplyr::filter(liquid == "L")
+
+# language variable
+df_dyn_L$language <- as.factor(df_dyn_L$language)
+levels(df_dyn_L$language)
+
+# vowel (context) variable
+df_dyn_L$context <- as.factor(df_dyn_L$context)
+levels(df_dyn_L$context)
+
+# speaker variable -- random effect
+df_dyn_L$speaker <- as.factor(df_dyn_L$speaker)
+levels(df_dyn_L$speaker)
+
+# word variable -- random effect
+df_dyn_L$word <- as.factor(df_dyn_L$word)
+levels(df_dyn_L$word)
+```
+
+
+```{r results=FALSE, warning=FALSE, message=FALSE}
+
+bam(f2z ~ language + context + s(time) + s(time, by = language) + s(time, by = context), data = df_dyn_L)
+
+```
+
+
+The model specification notation is somewhat similar to the one for the ```lme4::lmer()``` convention for the linear models, so hopefully this isn't too complex for you. 
+
+As explained earlier, a GAM model can take two kinds of predictor variables: **parametric** and **smooth** terms. **Parametric terms** specify predictors that would influence a constant, overall influence on the dependent variable. This usually corresponds to the **height** of the trajectory. In the model above, this corresponds to ```language``` and ```context```. 
+
+The new addition from the linear model would be **smooth terms** which allow GA(M)Ms to fit non-linear effects as a function of a variable. Smooth terms are notated as ```s()```. This usually corresponds to the **shape** of the trajectory. And in the model above, you can see a series of ```s()``` terms, including ```s(time)```, ```s(time, by = language)``` and ```s(time, by = context)```. We will cover the specifics later, but basically these instruct GAM to model **the non-linearity seen in F2 (dependint variable) as a function of time**. 
+
+## Let's model F2 trajectory
+
+Let's try modelling a simple GAMMs model based on our data set. 
+
+<!-- In modelling, let's take a similar approach to the static analysis. That is, we will fit a separate model for each combination of ```liquid``` and ```context``` in order to simplify the model interpretation. We'll first subset the data and then convert the variables into factor, a similar procedure to the static analysis.  -->
+
+<!-- ```{r} -->
+<!-- # subsetting data -- for /l/ -->
+<!-- df_dyn_L <- df_dyn |> -->
+<!--   dplyr::filter(liquid == "L") -->
+
+<!-- # language variable -->
+<!-- df_dyn_L$language <- as.factor(df_dyn_L$language) -->
+<!-- levels(df_dyn_L$language) -->
+
+<!-- # vowel (context) variable -->
+<!-- df_dyn_L$context <- as.factor(df_dyn_L$context) -->
+<!-- levels(df_dyn_L$context) -->
+
+<!-- # speaker variable -- random effect -->
+<!-- df_dyn_L$speaker <- as.factor(df_dyn_L$speaker) -->
+<!-- levels(df_dyn_L$speaker) -->
+
+<!-- # word variable -- random effect -->
+<!-- df_dyn_L$word <- as.factor(df_dyn_L$word) -->
+<!-- levels(df_dyn_L$word) -->
+<!-- ``` -->
+
+<!-- Let's first just try modelling ```f2z``` for English /l/ in the linear model notation that we are familiar with. That is, we will model the ```f2z``` values as a function of (1) language and (2) vowel context.  -->
+
+<!-- ```{r} -->
+<!-- # first model -- linear model -->
+<!-- m1 <- mgcv::bam(f2z ~ language + context, data = df_dyn_L, method = "fREML") -->
+
+<!-- # model summary -->
+<!-- summary(m1) -->
+<!-- ``` -->
+
+<!-- The output looks pretty much the same with the linear mixed-effect modelling using ```lme4::lmer()```.  -->
+
+<!-- # Full GAMMs model for F2z -->
+
+<!-- ```{r} -->
+<!-- # full model -->
+<!-- m_full_AR1 <- bam(f2z ~ langcont.ord + s(time) + s(time, by = langcont.ord) + s(time, speaker, bs = "fs", xt = "cr", m = 1) + s(time, word, bs = "fs", xt = "cr", m = 1), data = df_dyn_L, method = "fREML") -->
+
+<!-- # setting up AR1 model -->
+<!-- # 1) data frame is already ordered correctly -->
+<!-- # 2) marking starting points of each trajectory -->
+
+<!-- df_dyn_L$start.event <- df_dyn_L$time == 0 -->
+
+<!-- # 3) getting a rough estimate of the correlation between adjacent errors -->
+
+<!-- r1_m_full <- start_value_rho(m_full_AR1) -->
+
+<!-- # interaction model -->
+<!-- m_full_AR1 <- bam(f2z ~ langcont.ord + s(time) + s(time, by = langcont.ord) + s(time, speaker, bs = "fs", xt = "cr", m = 1) + s(time, word, bs = "fs", xt = "cr", m = 1), data = df_dyn_L, method = "fREML", rho = r1_m_full, AR.start = df_dyn_L$start.event) -->
+
+<!-- # check model summary -->
+<!-- summary(m_full_AR1) -->
+
+<!-- # check the residuals -->
+<!-- acf_resid(m_full_AR1, split_pred = "AR.start") -->
+
+<!-- # inspect gams -->
+<!-- m_full_preds <- tidygam::predict_gam(m_full_AR1, exclude_terms = c("s(time,speaker)", "s(time,word)")) -->
+
+<!-- m_full_preds -->
+
+<!-- # separate two main effects -->
+<!-- m_full_preds_2 <- tidygam::predict_gam( -->
+<!--   m_full_AR1, -->
+<!--   length_out = 25, -->
+<!--   exclude_terms = c("s(time,speaker)", "s(time,word)"), -->
+<!--   separate = list(langcont.ord = c("language", "context")) -->
+<!-- ) -->
+
+<!-- # get gamm prediction -->
+<!-- m_full_preds_2 |>  -->
+<!--   plot(series = "time", comparison = "language") + -->
+<!--   scale_colour_manual(values = cbPalette) + -->
+<!--   scale_fill_manual(values = cbPalette) + -->
+<!--   facet_grid(cols = vars(context)) -->
+
+<!-- # significance testing -->
+<!-- ## via mgcv::anova.gam() -->
+<!-- mgcv::anova.gam(m_full_AR1) -->
+
+<!-- ## via model comparison -->
+<!-- # interaction model with maximum likelihood (ML) estimation -->
+<!-- m_full_AR1 <- bam(f2z ~ langcont.ord + s(time) + s(time, by = langcont.ord) + s(time, speaker, bs = "fs", xt = "cr", m = 1) + s(time, word, bs = "fs", xt = "cr", m = 1), data = df_dyn_L, method = "ML", rho = r1_m_full, AR.start = df_dyn_L$start.event) -->
+
+<!-- ### a model without interaction term with maximum likelihood (ML) estimation -->
+<!-- m_nested_AR1 <- bam(f2z ~ s(time) + s(time, speaker, bs = "fs", xt = "cr", m = 1) + s(time, word, bs = "fs", xt = "cr", m = 1), data = df_dyn_L, method = "ML", rho = r1_m_full, AR.start = df_dyn_L$start.event) -->
+
+<!-- ### compare models -->
+<!-- compareML(m_full_AR1, m_nested_AR1, print.output = FALSE)$table -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- # converting language into the ordered factors -->
+<!-- df_dyn_L$language.ord <- as.ordered(df_dyn_L$language) -->
+<!-- contrasts(df_dyn_L$language.ord) <- "contr.treatment" -->
+
+<!-- # converting language into the ordered factors -->
+<!-- df_dyn_L$context.ord <- as.ordered(df_dyn_L$context) -->
+<!-- contrasts(df_dyn_L$context.ord) <- "contr.treatment" -->
+
+<!-- # interaction -->
+<!-- df_dyn_L <- df_dyn_L |>  -->
+<!--   dplyr::mutate( -->
+<!--     langcont = interaction(language, context), -->
+<!--     langcont.ord = as.ordered(langcont) -->
+<!--   ) -->
+
+<!-- # full model -->
+<!-- m_full <- bam(f2z ~ language.ord + context.ord + langcont.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord) + s(time, by = langcont.ord) +  s(time, speaker, bs = "fs", xt = "cr", m = 1) + s(time, word, bs = "fs", xt = "cr", m = 1), data = df_dyn_L, method = "fREML") -->
+
+<!-- summary(m_full) -->
+
+<!-- # setting up AR1 model -->
+<!-- # 1) data frame is already ordered correctly -->
+<!-- # 2) marking starting points of each trajectory -->
+
+<!-- df_dyn_L$start.event <- df_dyn_L$time == 0 -->
+
+<!-- # 3) getting a rough estimate of the correlation between adjacent errors -->
+
+<!-- r1_m_full <- start_value_rho(m_full_AR1) -->
+
+<!-- # fit GAMMs model with AR1 model -->
+<!-- # m_full_AR1 <- bam(f2z ~ language.ord +  -->
+<!-- #                     context.ord +  -->
+<!-- #                     s(time) +  -->
+<!-- #                     s(time, by = language.ord) +  -->
+<!-- #                     s(time, by = context.ord) +  -->
+<!-- #                     s(time, by = langcont.ord) +   -->
+<!-- #                     s(time, speaker, bs = "fs", xt = "cr", m = 1) +  -->
+<!-- #                     s(time, word, bs = "fs", xt = "cr", m = 1),  -->
+<!-- #                   data = df_dyn_L, method = "ML", rho = r1_m_full, AR.start = df_dyn_L$start.event) -->
+
+
+<!-- # interaction model -->
+<!-- m_full_AR1 <- bam(f2z ~ langcont.ord + s(time) + s(time, by = langcont.ord) + s(time, speaker, bs = "fs", xt = "cr", m = 1) + s(time, word, bs = "fs", xt = "cr", m = 1), data = df_dyn_L, method = "fREML", rho = r1_m_full, AR.start = df_dyn_L$start.event) -->
+
+<!-- summary(m_full_AR1) -->
+
+<!-- # check the residuals -->
+<!-- acf_resid(m_full_AR1, split_pred = "AR.start") -->
+
+<!-- # inspect gams -->
+<!-- m_full_preds <- tidygam::predict_gam(m_full_AR1, exclude_terms = c("s(time,speaker)", "s(time,word)")) -->
+
+<!-- m_full_preds -->
+
+<!-- # separate two main effects -->
+<!-- m_full_preds_2 <- tidygam::predict_gam( -->
+<!--   m_full_AR1, -->
+<!--   length_out = 25, -->
+<!--   exclude_terms = c("s(time,speaker)", "s(time,word)"), -->
+<!--   separate = list(langcont.ord = c("language", "context")) -->
+<!-- ) -->
+
+<!-- # get gamm prediction -->
+<!-- m_full_preds_2 |>  -->
+<!--   plot(series = "time", comparison = "language") + -->
+<!--   scale_colour_manual(values = cbPalette) + -->
+<!--   scale_fill_manual(values = cbPalette) + -->
+<!--   facet_grid(cols = vars(context)) -->
+
+<!-- # significance testing -->
+<!-- mgcv::anova.gam(m_full_AR1) -->
+
+<!-- # updated smooths -->
+<!-- ## plotting the separate and difference smooths for 'language.ord' -->
+<!-- plot_smooth(m_full_AR1, view = "time", plot_all = "language.ord", rug = F, print.summary = FALSE, main = "separate smooths for language") -->
+<!-- plot_diff(m_full_AR1, view = "time", comp = list(language.ord = c("English", "Japanese")), print.summary = FALSE) -->
+
+<!-- ## plotting the separate and difference smooths between L1 Japanese and L1 English speakers -->
+<!-- ### the /æ/ context -->
+<!-- plot_smooth(m_full_AR1, view = "time", plot_all = "language.ord", cond = list(context.ord = "/æ/"), rug = F, print.summary = FALSE, main = "separate smooths for speaker groups in /æ/") -->
+<!-- plot_diff(m_full_AR1, view = "time", comp = list(language.ord = c("English", "Japanese")), cond = list(context.ord = "/æ/"), print.summary = FALSE, main = "Difference between speaker groups in /æ/") -->
+
+<!-- ### the /i/ context -->
+<!-- plot_smooth(m_full_AR1, view = "time", plot_all = "language.ord", cond = list(context.ord = "/i/"), rug = F, print.summary = FALSE, main = "separate smooths for speaker groups in /i/") -->
+<!-- plot_diff(m_full_AR1, view = "time", comp = list(language.ord = c("English", "Japanese")), cond = list(context.ord = "/i/"), print.summary = FALSE, main = "Difference between speaker groups in /i/") -->
+
+<!-- ### the /u/ context -->
+<!-- plot_smooth(m_full_AR1, view = "time", plot_all = "language.ord", cond = list(context.ord = "/u/"), rug = F, print.summary = FALSE, main = "separate smooths for speaker groups in /u/") -->
+<!-- plot_diff(m_full_AR1, view = "time", comp = list(language.ord = c("English", "Japanese")), cond = list(context.ord = "/u/"), print.summary = FALSE, main = "Difference between speaker groups in /u/") -->
+<!-- ``` -->
 
