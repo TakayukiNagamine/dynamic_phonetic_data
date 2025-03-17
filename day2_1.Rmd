@@ -1,0 +1,273 @@
+---
+title: 'Day 2 Session 1: <br> Dynamic spectral analysis <br> using Functional Principal Component Analysis (FPCA)'
+author: "Takayuki Nagamine"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+    # html_document: 
+    # toc: true
+    # toc_float: true
+    # number_sections: true
+---
+
+```{r include=FALSE}
+library(rmdformats)
+library(tidyverse)
+
+# setting the plot theme globally
+theme_set(theme_classic())
+
+# define colour-blind-friendly colour palette 
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+"#D55E00", "#CC79A7")
+```
+
+
+# Introduction
+  
+# Principal Component Analysis (PCA)
+
+# Preliminaries
+
+## Installing/loading packages
+
+```{r warning=FALSE, message=FALSE}
+# installing packages
+# install.packages("tidyverse")
+# install.packages("mgcv")
+# install.packages("itsadug")
+# install.packages("tidymv")
+# install.packages("tidygam")
+
+# importing packages
+library(tidyverse)
+library(fdapace)
+```
+
+
+## Importing data set
+
+Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
+
+```{r message=FALSE}
+# import the csv file "initial.liquid.dynamic.csv" from the "data" directory and save it as "df_dyn"
+df_dyn <- readr::read_csv("data/initial.liquid.dynamic.csv")
+```
+
+# Data wrangling
+
+## Check data
+
+We always start with inspecting the data set using ```colnames()```. 
+```{r}
+# Let's check what columns the data frame contains
+colnames(df_dyn)
+```
+
+
+## Omitting irrelavent columns
+
+We'll omit the columns we don't need.
+
+```{r}
+# Let's check the number of "approximant" tokens
+df_dyn |> 
+  dplyr::group_by(IsApproximant) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Let's check the number of tokens of good recording quality
+df_dyn |> 
+  dplyr::group_by(IsAcoustic) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# How about 'omit'?
+df_dyn |> 
+  dplyr::group_by(omit) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Remove columns that we no longer need
+df_dyn <- df_dyn |> 
+  dplyr::select(-c(IsApproximant, IsAcoustic, omit, Barkf1, Barkf2, Barkf3, Barkf2f1, Barkf3f2, f2f1, f3f2))
+```
+Let's check the column names again.
+
+```{r}
+colnames(df_dyn)
+```
+
+Let's also convert the ```context``` column into IPA symbols for a more intuitive representation:
+
+```{r}
+# convert the ARPABET notation into IPA symbols
+df_dyn <- df_dyn |> 
+  dplyr::mutate(
+    context = case_when(
+      context == "AE" ~ "/æ/",
+      context == "IY" ~ "/i/",
+      context == "UW" ~ "/u/"
+    )
+  )
+```
+
+## Checking the number of participants, tokens...
+
+Let's also obtain some descriptive statistics here. Note that we need to divide the number of rows by 11 to obtain the accurate number of tokens, as one token now has 11 time points.
+
+```{r}
+# number of participants
+df_dyn |> 
+  dplyr::group_by(language) |> 
+  dplyr::summarise(n = n_distinct(speaker)) |> 
+  dplyr::ungroup()
+
+# number of tokens per segment
+df_dyn |> 
+  dplyr::group_by(segment) |> 
+  dplyr::summarise(n = n()/11) |> # divide by 11 time points
+  dplyr::ungroup()
+```
+
+# Data visualisation
+
+## Scaling formant frequencies
+
+Do you remember how to visualise the dynamic data? The basic procedure is the same as in the static analysis; We first apply z-score normalisation to the formant frequencies to make sure that formant values are comparable across speakers. 
+
+```{r}
+df_dyn <- df_dyn |> 
+  dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
+  dplyr::mutate(
+    f1z = as.numeric(scale(f1)), # scale f1 into z-score
+    f2z = as.numeric(scale(f2)), # scale f2 into z-score
+    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+  ) |> 
+  dplyr::ungroup() # don't forget ungrouping
+```
+
+## Descriptive statistics
+
+Let's check the mean and SD for both raw and normalised formant values: just see F1 for now. Note that the mean z-scores do not seem to look zero, but this is because computers are not very good at dealing with very small numbers (e.g., decimals) and some fluctuations occur in computing the values.
+
+```{r}
+# check mean and sd of raw/scaled F1 values for each speaker
+df_dyn |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f1_mean = mean(f1),
+    f1_sd = sd(f1),
+    f1z_mean = mean(f1z),
+    f1z_sd = sd(f1z)
+  ) |> 
+  dplyr::ungroup() 
+```
+
+## Visualisation
+
+### raw trajectories
+
+Let's visualise the raw data first:
+
+```{r warning=FALSE}
+# F2 - raw trajectories
+df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "time-varying change in F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### smooths
+
+Let's also try plotting smoothed trajectories:
+
+```{r warning=FALSE}
+# F2 - smooths
+df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  # geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  # geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.2, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "smoothed time-varying change in F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+# Functional Principal Component Analysis (FPCA)
+
+At this point, we tried fitting Generalised Additive Mixed-Effect Models (GAMMs) to investigate between-group differences in F2 dynamics. This was possible because we had some ideas of possible factors (e.g., vowel context, speaker groups). In a way, lots of decisions were made in a **top-down** manner.
+
+We could also try another approach; a **bottom-up** approach. That is, does the data tell us anything about higher-order groupings? Do the vowel context/speaker group differences emerge from the data? 
+
+Here, let's try **Functional Principal Component Analysis (FPCA)** as a bottom-up approach. 
+
+```{r}
+# IDs = token column; tVec = time column; yVec = variable column(s)
+input_df <- fdapace::MakeFPCAInputs(IDs = df_dyn$file, tVec = df_dyn$time, yVec = df_dyn$f2z)
+
+# Check if there's any issues with the data
+fdapace::CheckData(input_df$Ly, input_df$Lt)
+
+# No errors have been returned, so let's now run fPCA on the dynamic PC1 trajectory
+df_dyn_fpca <- fdapace::FPCA(Ly = input_df$Ly, input_df$Lt, optns = list(plot = TRUE))
+```
+
+## checking fpca results
+
+```{r}
+# eigenvalues
+df_dyn_fpca$lambda
+
+# the cumulative percentage of variance explained by the eigenvalue
+df_dyn_fpca$cumFVE
+
+# list of sampling time
+df_dyn_fpca$workGrid
+
+# PC scores -> each row is 1 token, each column is one PC
+head(df_dyn_fpca$xiEst)
+
+# Mean curve
+fdapace::GetMeanCurve(Ly = input_df$Ly, Lt = input_df$Lt, optns = list(plot = TRUE))
+
+# plot
+plot(df_dyn_fpca)
+
+# scree plot
+CreateScreePlot(df_dyn_fpca)
+
+# path plot
+CreatePathPlot(df_dyn_fpca, xlab = "normalised time", ylab = "F2 (z-normalised)")
+```
+```{r}
+# function: get PC scores + return data frame with PCs for each token
+get_pc_scores <- function(fpcaObj){
+  pcs <- data.frame(fpcaObj$xiEst)
+  token <- names(fpcaObj$inputData$Lt) 
+  df <- cbind(token, pcs)
+  n_pcs <- length(fpcaObj$lambda) # get number of PCs
+  pc_names <- paste0("PC", 1:n_pcs) # create colnames for PCs
+  names(df) <- c("file", pc_names) # add colnames for token + PCs
+  return(df)
+}
+
+# get PC scores w/ token info
+pc_df <- get_pc_scores(df_dyn_fpca)
+
+# join PCs (dat) with selected cols from original data frame 
+## store meta info
+meta <- df_dyn |>  
+  select(speaker, gender, language, word, liquid, context, file)
+
+## merge the list and meta data - unique(meta) because otherwise there would be lots of duplicates
+dat <- left_join(pc_df, unique(meta), by = "file")
+```
+
