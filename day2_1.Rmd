@@ -24,8 +24,266 @@ cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 
 
 # Introduction
-  
+
 # Principal Component Analysis (PCA)
+
+Let's apply Principal Component Analysis (PCA) onto the static data.
+
+# Preliminaries
+
+## Importing data set
+
+## Importing data set
+
+Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
+
+```{r message=FALSE}
+# import the csv file "initial.liquid.static.csv" from the "data" directory and save it as "df_mid"
+df_mid <- readr::read_csv("data/initial.liquid.static.csv")
+```
+
+# Checking data and data wrangling
+
+As usual, let's check what variables are included in the data set using ```colnames()```.
+
+```{r}
+# Let's check what columns the data frame contains
+colnames(df_mid)
+```
+
+Also remove irrelevant columns and rename the variables in the ```vowel``` column as has been done previously. 
+
+```{r}
+# Remove columns 
+df_mid <- df_mid |> 
+  dplyr::select(-c(IsApproximant, IsAcoustic, omit))
+
+# Rename vowel variables
+df_mid <- df_mid |> 
+  dplyr::mutate(
+    vowel = case_when(
+      next_sound == "AE1" ~ "/æ/",
+      next_sound == "IY1" ~ "/i/",
+      next_sound == "UW1" ~ "/u/",
+    )
+  )
+
+# z-normalise formant values for cross-speaker comparison
+df_mid <- df_mid |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::mutate(
+    f1z = scale(f1),
+    f2z = scale(f2),
+    f3z = scale(f3)
+  ) |> 
+  dplyr::ungroup()
+
+```
+
+
+### Your turn
+
+Please write a code below to inspect the data. Try obtaining descriptive statistics (e.g., the number of tokens, participants etc)
+
+```{r}
+# Check column names again
+# ...
+```
+
+# Data visualisation
+
+Let's try data visualisation. First, we'll compare between-group difference using a combination of scatter, box and violin plots. In order to plot everything altogether, we'll convert the data set into long data using the ```tidyr::pivot_longer()``` function.
+
+```{r}
+# convert the data set into a long data
+df_mid_long <- df_mid |> 
+  dplyr::select(-c(f1, f2, f3)) |> 
+  tidyr::pivot_longer(14:16, names_to = "formant", values_to = "values")
+
+# plot
+df_mid_long |> 
+  ggplot(aes(x = language, y = values)) +
+  geom_jitter(aes(colour = language), alpha = 0.5) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(width = 0.3, alpha = 0.4) +
+  facet_grid(vowel ~ formant) +
+  scale_colour_manual(values = cbPalette) +
+  theme(
+    strip.text.y = element_text(angle = 360)
+  )
+```
+
+Let's also take a slightly different approach. The objective of PCA is to draw straight lines along the dimension that shows the greatest **variance**. To inspect the variance in the data, we'll plot the relationships between the three spectral dimensions.
+
+```{r}
+# F1 and F2
+df_mid |> 
+  ggplot(aes(x = f1z, y = f2z)) +
+  geom_point(aes(colour = language), alpha = 0.4) +
+  scale_colour_manual(values = cbPalette) +
+  facet_wrap(~ segment)
+
+# F2 and F3
+df_mid |> 
+  ggplot(aes(x = f2z, y = f3z)) +
+  geom_point(aes(colour = language), alpha = 0.4) +
+  scale_colour_manual(values = cbPalette) +
+  facet_wrap(~ segment)
+
+# F1 and F3
+df_mid |> 
+  ggplot(aes(x = f1z, y = f3z)) +
+  geom_point(aes(colour = language), alpha = 0.4) +
+  scale_colour_manual(values = cbPalette) +
+  facet_wrap(~ segment)
+```
+
+As expected, English /l/ and /ɹ/ can be reliably distinguished along the **F3** dimension, such that English /ɹ/ shows lower F3 than English /l/. 
+
+The key takeaway here, however, is that we always need **multiple** plots in order to obtain a holistic understanding of the data structure, which is somewhat cumbersome. Here, PCA comes in handy, as it is a **dimension reduction** technique and boils down the variance in the data into a handful of **principal components**. 
+
+# Applying PCA
+
+Let's apply PCA on the formant data. We'll classify the tokens based on the z-scored F1, F2 and F3. We use the ```prcomp()``` function to perform PCA.
+
+```{r}
+# PCA on F1z, F2z and F3z
+pca_mid <- prcomp(select(df_mid, 17:19))
+
+# check summary
+summary(pca_mid)
+
+pca_var <- pca_mid$sdev^2
+pca_var_exp <- pca_var / sum(pca_var)  # Proportion of variance
+```
+
+The summary shows three rows:
+
+- **Standard deviation**: This fundamentally shows the variance shown in the data. The greater the value, the more variance is captured by each PC.
+
+- **Proportion of Variance**: This expresses the amount of variance explained by each PC in a proportional manner. This can be calculated with the following formulae:
+
+$$
+pca\_var\_exp = \frac{(\text{sdev})^2}{\sum pca\_var}
+$$
+
+- **Cumulative Proportion**: This simply shows the sum of the proportion of variance explained by each PC. For instance, PC1 explains 43.37% of variance whereas PC2 33.68%. The cumulative proportion of PC1 and PC2 is thus 77.05% (i.e., 43.37% + 33.68%).
+
+## PCA summary
+
+Let's also look into the inside of ```pca_mid```.
+
+```{r}
+# show the PCA results
+pca_mid
+```
+
+The top line shows **standard deviation**, which we just saw earlier, so let's skip this for now. 
+
+At the bottom, we have **loadings matrix**. This shows **eigenvectors**: i.e., the **amount** and (2) the **direction** of the contribution that the original data dimensions make to each PC. Let's disentangle this one by one:
+
+- **PC1**: Contributions of ```f1z```, ```f2z``` and ```f3z``` are all in the same direction (i.e., negative). But the amount of contribution is fairly small for ```f1z``` compared to ```f2z``` and ```f3z```. 
+
+- **PC2**: In contrast to PC1, ```f1z``` contributes to PC2 to a greater extent than ```f2z``` and ```f3z```. 
+
+- **PC3**: The amount of contribution itself is quite similar to PC1, in which ```f2z``` and ```f3z``` makes a substantial contribution. But the directionality is opposite between ```f2z``` and ```f3z```. 
+
+So, all in all, PCA might suggest:
+
+- **PC1** captures a covariation between ```f2z``` and ```f3z```, which may correspond to the spectral difference between /l/ and /ɹ/.
+
+- **PC2** mainly captures the variation of ```f1z```. 
+
+- **PC3** captures an inverse relationship between ```f2z``` and ```f3z```, which might correspond to differences in coarticulatory effects. 
+
+The interpretation may be better facilitated by data visualisation. Let's try two main approaches to data visualiastion of PCA. 
+
+## Data visualisation 1: Scree plot
+
+The amount of variance is useful when determining which PC to retain for analysis. As a rule of thumb, Bayeen (2008) recommends that we retain PCs that explains greater than 5% of variance in the data.
+
+A useful visualisation of the proportion of variance is **scree plot**. There is a default function ```screeplot()``` that lets you create a scree plot quite easily:
+
+```{r}
+# scree plot: bar chart
+screeplot(pca_mid)
+
+# scree plot: line plot
+screeplot(pca_mid, type = "line")
+```
+
+You can also create a scree plot using ```ggplot()``` by manually calculating the proportion of variance based on the standard deviation (see above for the formula). This is useful when you need more flexibility -- e.g., to show the 5% thereshold suggested by Bayeen (2008).
+
+```{r}
+## obtaining proportion of variance 
+pca_var_exp <- pca_mid$sdev^2 / sum(pca_var)
+
+# making var_explained as a tibble 
+pca_var_exp <- tibble::as_tibble(pca_var_exp)
+
+# adding column name
+pca_var_exp <- pca_var_exp |>  
+  tibble::as_tibble() |>  
+  dplyr::mutate(
+    PC = row_number()
+  )
+
+# create a plot
+sclee_plot <- pca_var_exp |> 
+  ggplot(aes(x = PC, y = value)) +
+  geom_line() +
+  geom_text(aes(label = round(value, digits = 3)*100), nudge_x = 0.2) +
+  geom_label(aes(label = PC), label.padding = unit(0.40, "lines")) +
+  geom_hline(yintercept = 0.05, linetype = 'dotted') +
+  scale_x_continuous(breaks = c(1, 2, 3)) +
+  labs(x = "Principal Component", y = "Variance Explained", title = "Proportion of Variance explained by each PC")
+
+# showing plot
+sclee_plot
+```
+Since there are only three PCs identified from the data, it doesn't make much sense to visualise them. But this will be useful when ```prcomp()``` identifies more than a few PCs.
+
+## creating biplot
+
+The interpretation of loading matrix was more or less straightforward in this case given that only three parameters were involved. It is easy to see, however, that this can get quite complicated when the original data have a greater number of dimensions. 
+
+**Biplots** help us better understand the loadings and PC scores for each observation. For example, the default function ```biplot()``` plots all observations along the PC1 and PC2 dimensions with **eigenvectors** shown in red arrows (i.e., the direction and the amount of weighting: also called **loadings**). 
+
+```{r}
+# default function for biplot
+biplot(pca_mid)
+```
+Similarly to the scree plot, we could also create biplots manually using ```ggplot()```. 
+
+```{r}
+# Extract PCA scores (principal component scores for each observation)
+pca_scores <- as.data.frame(pca_mid$x)
+
+# Extract PCA loadings (the contribution of each original variable to the PCs)
+pca_loadings <- as.data.frame(pca_mid$rotation)
+
+# Combine scores and loadings into one data frame for plotting
+scores_df <- cbind(pca_scores, df_mid[, c("segment", "language", "vowel")])
+
+# Reshape the loadings for visualization
+loadings_df <- pca_loadings |> 
+  mutate(variable = rownames(pca_loadings))
+
+# Plotting the PCA biplot with facets by language
+ggplot() +
+  geom_point(data = scores_df, aes(x = PC1, y = PC2, color = vowel, shape = vowel), size = 2, alpha = 0.5) + # Plot the PCA scores (observations)
+  geom_segment(data = loadings_df, aes(x = 0, y = 0, xend = PC1 * 5, yend = PC2 * 5), arrow = arrow(type = "closed", length = unit(0.1, "inches")), color = "red") + # Plot the loadings (variables)
+  geom_text(data = loadings_df, aes(x = PC1 * 5, y = PC2 * 5, label = variable), size = 4, color = "red") + # Add labels for the loadings
+  stat_ellipse(data = scores_df, aes(x = PC1, y = PC2, color = vowel, fill = vowel), geom = "polygon", alpha = 0.2, level = 0.95) + 
+  facet_grid(segment ~ language) +
+  labs(title = "PCA biplot by language") +
+  scale_color_manual(values = cbPalette) + 
+  scale_fill_manual(values = cbPalette) + 
+  theme(legend.position = "bottom",
+        strip.text.y = element_text(angle = 360))
+```
+
+# Functional Principal Component Analysis (FPCA)
 
 # Preliminaries
 
