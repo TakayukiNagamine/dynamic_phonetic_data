@@ -18,8 +18,7 @@ library(tidyverse)
 theme_set(theme_classic())
 
 # define colour-blind-friendly colour palette 
-cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
-"#D55E00", "#CC79A7")
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 ```
 
 
@@ -133,23 +132,23 @@ Let's also take a slightly different approach. The objective of PCA is to draw s
 # F1 and F2
 df_mid |> 
   ggplot(aes(x = f1z, y = f2z)) +
-  geom_point(aes(colour = language), alpha = 0.4) +
+  geom_point(aes(colour = segment), alpha = 0.4) +
   scale_colour_manual(values = cbPalette) +
-  facet_wrap(~ segment)
+  facet_wrap(~ language)
 
 # F2 and F3
 df_mid |> 
   ggplot(aes(x = f2z, y = f3z)) +
-  geom_point(aes(colour = language), alpha = 0.4) +
+  geom_point(aes(colour = segment), alpha = 0.4) +
   scale_colour_manual(values = cbPalette) +
-  facet_wrap(~ segment)
+  facet_wrap(~ language)
 
 # F1 and F3
 df_mid |> 
   ggplot(aes(x = f1z, y = f3z)) +
-  geom_point(aes(colour = language), alpha = 0.4) +
+  geom_point(aes(colour = segment), alpha = 0.4) +
   scale_colour_manual(values = cbPalette) +
-  facet_wrap(~ segment)
+  facet_wrap(~ language)
 ```
 
 As expected, English /l/ and /ɹ/ can be reliably distinguished along the **F3** dimension, such that English /ɹ/ shows lower F3 than English /l/. 
@@ -183,6 +182,7 @@ df_mid |>
 
 ### Correlation
 
+Let's also check whether duration correlates with any of the spectral measures.
 
 ```{r}
 # with F1 
@@ -214,14 +214,18 @@ Mmm, we do not seem to find particularly interesting correlations here. But this
 Let's apply PCA on the formant data. We'll classify the tokens based on the z-scored F1, F2 and F3. We use the ```prcomp()``` function to perform PCA.
 
 ```{r}
-# PCA on F1z, F2z and F3z
-pca_mid <- prcomp(select(df_mid, 17:19))
+# rearrange column order for easier data subsetting
+df_mid <- df_mid |> 
+  dplyr::relocate(f1z, f2z, f3z, duration_ms_z)
+
+# check colnames
+colnames(df_mid)
+
+# PCA on F1z, F2z, F3z and duration
+pca_mid <- prcomp(select(df_mid, 1:4))
 
 # check summary
 summary(pca_mid)
-
-pca_var <- pca_mid$sdev^2
-pca_var_exp <- pca_var / sum(pca_var)  # Proportion of variance
 ```
 
 The summary shows three rows:
@@ -236,6 +240,23 @@ $$
 
 - **Cumulative Proportion**: This simply shows the sum of the proportion of variance explained by each PC. For instance, PC1 explains 43.37% of variance whereas PC2 33.68%. The cumulative proportion of PC1 and PC2 is thus 77.05% (i.e., 43.37% + 33.68%).
 
+Another important index in PCA is **eigenvalues**. They represent **how much variance is explained by each PC**. This sounds similar to some of the values we already saw: standard deviation and (cumulative) proportion. Eigenvalues are computed based on starndard deviation, and then prooprtion of variance is calculated based on eigenvalues. 
+
+```{r}
+# calculate eigenvalues
+eigenvalues <- pca_mid$sdev^2
+
+# show eigenvalues
+eigenvalues
+
+# calculating proportion of variance 
+pca_var_exp <- eigenvalues / sum(eigenvalues)  # Proportion of variance
+
+pca_var_exp
+```
+
+
+
 ## PCA summary
 
 Let's also look into the inside of ```pca_mid```.
@@ -249,19 +270,23 @@ The top line shows **standard deviation**, which we just saw earlier, so let's s
 
 At the bottom, we have **loadings matrix**. This shows **eigenvectors**: i.e., the **amount** and (2) the **direction** of the contribution that the original data dimensions make to each PC. Let's disentangle this one by one:
 
-- **PC1**: Contributions of ```f1z```, ```f2z``` and ```f3z``` are all in the same direction (i.e., negative). But the amount of contribution is fairly small for ```f1z``` compared to ```f2z``` and ```f3z```. 
+- **PC1**: Contributions of ```f1z```, ```f2z```, ```f3z``` and ```duration``` are all in the same direction (i.e., positive). But the amount of contribution is fairly small for ```f1z``` and ```duration``` compared to ```f2z``` and ```f3z```. 
 
-- **PC2**: In contrast to PC1, ```f1z``` contributes to PC2 to a greater extent than ```f2z``` and ```f3z```. 
+- **PC2**: In contrast to PC1, ```f1z``` contributes to PC2 to a greater extent than ```f2z``` and ```f3z```. ```duration``` also seems to make a big contribution here but in the opposite direction (i.e., negative).
 
-- **PC3**: The amount of contribution itself is quite similar to PC1, in which ```f2z``` and ```f3z``` makes a substantial contribution. But the directionality is opposite between ```f2z``` and ```f3z```. 
+- **PC3**: The contribution of ```duration``` seems quite big here, too. 
+
+- **PC4**: ```f2z``` and ```f3z``` both seem to contribute to this dimension, although they are in antagonistic direction. 
 
 So, all in all, PCA might suggest:
 
 - **PC1** captures a covariation between ```f2z``` and ```f3z```, which may correspond to the spectral difference between /l/ and /ɹ/.
 
-- **PC2** mainly captures the variation of ```f1z```. 
+- **PC2** mainly captures a covariation of ```duration``` and ```f1z``` but in opposite directions.
 
-- **PC3** captures an inverse relationship between ```f2z``` and ```f3z```, which might correspond to differences in coarticulatory effects. 
+- **PC3** shows variation in ```f1z```. 
+
+- **PC4** again seems to capture ```f2z``` and ```f3z``` but in opposite directions. 
 
 The interpretation may be better facilitated by data visualisation. Let's try two main approaches to data visualiastion of PCA. 
 
@@ -283,7 +308,7 @@ You can also create a scree plot using ```ggplot()``` by manually calculating th
 
 ```{r}
 ## obtaining proportion of variance 
-pca_var_exp <- pca_mid$sdev^2 / sum(pca_var)
+pca_var_exp <- pca_mid$sdev^2 / sum(eigenvalues)
 
 # making var_explained as a tibble 
 pca_var_exp <- tibble::as_tibble(pca_var_exp)
@@ -296,7 +321,7 @@ pca_var_exp <- pca_var_exp |>
   )
 
 # create a plot
-sclee_plot <- pca_var_exp |> 
+scree_plot <- pca_var_exp |> 
   ggplot(aes(x = PC, y = value)) +
   geom_line() +
   geom_text(aes(label = round(value, digits = 3)*100), nudge_x = 0.2) +
@@ -306,7 +331,7 @@ sclee_plot <- pca_var_exp |>
   labs(x = "Principal Component", y = "Variance Explained", title = "Proportion of Variance explained by each PC")
 
 # showing plot
-sclee_plot
+scree_plot
 ```
 Since there are only three PCs identified from the data, it doesn't make much sense to visualise them. But this will be useful when ```prcomp()``` identifies more than a few PCs.
 
@@ -320,7 +345,10 @@ The interpretation of loading matrix was more or less straightforward in this ca
 # default function for biplot
 biplot(pca_mid)
 ```
-Similarly to the scree plot, we could also create biplots manually using ```ggplot()```. 
+
+## Detailed biplots
+
+Similarly to the scree plot, we could also create biplots manually using ```ggplot()```. This will help us better understand what each PC could stand for in the current data set.
 
 ```{r}
 # Extract PCA scores (principal component scores for each observation)
@@ -329,7 +357,7 @@ pca_scores <- as.data.frame(pca_mid$x)
 # Extract PCA loadings (the contribution of each original variable to the PCs)
 pca_loadings <- as.data.frame(pca_mid$rotation)
 
-# Combine scores and loadings into one data frame for plotting
+# Combine scores into one data frame for plotting
 scores_df <- cbind(pca_scores, df_mid[, c("segment", "language", "vowel")])
 
 # Reshape the loadings for visualization
@@ -350,19 +378,227 @@ ggplot() +
         strip.text.y = element_text(angle = 360))
 ```
 
+# Using PC scores as data
+
+So far, we have identified four PCs, each of which explains more than 5% of variance in the data. At first glance, this doesn't seem to be a good way of data reduction, as we got four PC dimensions out of four variables (```f1z```, ```f2z```, ```f3z```, and ```duration```).
+
+However, we could also argue that data reduction has been indeed achieved in the sense that some PCs capture joint contributions of multiple parameters -- e.g., PC1 showing covariation of ```f2z``` and ```f3z```. In other words, we have identified in a data-driven manner that the two spectral parameters act together, and we have compressed the two parameters into one PC dimension (i.e., PC1). 
+
+One of the advantages of using PCA is that it **converts the data onto new scales** in a data-driven manner. More specifically, PCA associates each data point with new numeric values called **PC scores**, showing variation of each data point along each PC dimensions. As a common practice, we can use PC scores as input to further data visualisation and statistical analysis.
+
+## Extracting PC scores
+
+PC scores are stored as ```x``` in the PCA output. Let's use ```head()``` function to only display the first six rows as otherwise the list would be too big. 
+
+```{r}
+# displaying PC scores
+head(pca_mid$x)
+```
+
+Assuming that we haven't made any changes to the order of rows, we can combine the PC scores with the existing data set. We have actually already done this when visualising the data, so I simply copy and paste the codes here: 
+
+```{r}
+# extract PCA scores (principal component scores for each observation)
+pca_scores <- as.data.frame(pca_mid$x)
+
+# check the number of rows
+## pc score
+nrow(pca_scores)
+
+## main data set
+nrow(df_mid)
+```
+
+Both ```pc_score``` and ```df_mid``` contain the same number of rows, so we can merge them into one data frame.
+
+```{r}
+# combine scores into one data frame for plotting
+scores_df <- cbind(pca_scores, df_mid[, c("segment", "language", "vowel", "speaker", "gender", "word")])
+```
+
+
+## Check PC scores
+
+Before visualisation, let's take a look at descriptive statistics of PC scores.
+
+```{r}
+scores_df |> 
+  dplyr::group_by(language, segment, vowel) |> 
+  dplyr::summarise(
+    PC1_mean = mean(PC1),
+    PC1_sd = sd(PC1),
+    PC2_mean = mean(PC2),
+    PC2_sd = sd(PC2),
+    PC3_mean = mean(PC3),
+    PC3_sd = sd(PC3),
+    PC4_mean = mean(PC4),
+    PC4_sd = sd(PC4)
+  ) |> 
+  dplyr::ungroup()
+```
+
+We get lots of numbers here -- please do feel free to take a moment to digest these. But we could also visualise them to better facilitate the interpretation. 
+
+## Visualising PCs
+
+### PC1
+
+Let's visualise PC scores to see if our assumptions about each PC is correct. We think that PC1 captures covariation of ```f2z``` and ```f3z```, and this should correspond to the contrast between English /l/ (lower F2, higher F3) and /ɹ/ (higher F2, lower F3). 
+
+```{r}
+## PC1 - by liquid consonant
+scores_df |> 
+  ggplot(aes(x = segment, y = PC1, colour = segment)) +
+  geom_jitter(width = 0.3) +
+  geom_violin(alpha = 0.3) +
+  geom_boxplot(width = 0.3, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
+  scale_colour_manual(values = cbPalette) +
+  facet_grid(language ~ vowel) +
+  theme(
+    strip.text.y = element_text(angle = 360)
+  )
+```
+
+This is more or less true, good! We could also make a between-group comparison. 
+
+```{r}
+## PC1 - by group
+scores_df |> 
+  ggplot(aes(x = language, y = PC1, colour = language)) +
+  geom_jitter(width = 0.3) +
+  geom_violin(alpha = 0.3) +
+  geom_boxplot(width = 0.3, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
+  scale_colour_manual(values = cbPalette) +
+  facet_grid(segment ~ vowel) +
+  theme(
+    strip.text.y = element_text(angle = 360)
+  )
+```
+
+We can see some patterns here: e.g., both L1 English and L1 Japanese speakers are similar for /l/, L1 Japanese speakers produce smaller PC1 scores in the /u/ context than L1 English speakers. Some between-group differences can be found for English /ɹ/ as well. 
+
+### Your turn
+
+In a similar manner to PC1, please visualise PC2, PC3 and PC4. Please try different visualisation methods to explore what each PC dimension highlights. 
+
+### PC2
+
+PC2 mainly captured covariation between ```duration``` and ```f1z```. This is a little less intuitive, but previous research has indeed shown that L1 English and L1 Japanese speakers may exhibit different **F1 transition duration** profiles. So, it would be interesting to visualise PC2 to show between-group differences:
+
+```{r}
+## PC2
+### scores_df |> ...
+
+```
+
+### PC3
+
+PC3 captures variation of ```f1z``` predominantly. So I would assume that this captures variation of the vocalic context -- e.g., higher F1 for low vowels.
+
+```{r}
+## PC3
+### scores_df |> ...
+```
+
+### PC4
+
+PC4 is similar to PC1 in that it captures variation of ```f2z``` and ```f3z```, but here the direction is opposite. I would still assume that this may result from differences in vocalic context:
+
+```{r}
+## PC4
+### scores_df |> ...
+```
+
+## Statistical analysis
+
+As I said earlier, as a somewhat common practice, PC scores can serve as input to further statistical analysis. So far, we have found that **PC1** captures the contrast between English /l/ and /ɹ/; although this is sort of obvious, the most important message here is that **the data tells us about it without any apriori knowledge**. 
+
+In the data visualisation above, it was somewhat difficult to identify which of these variables: ```language```, ```vowel``` and ```segment```, would have a significant effect. Let's construct a linear mixed effect model to formally test this. 
+
+### Your turn
+
+Using knowledge from yesterday, please construct a linear mixed-effect model to predict z-noramlised PC1 values by:
+
+- ```language```
+
+- ```segment```
+
+- an interaction between ```language``` and ```segment```
+
+Hint: My hunch here is that by-speaker random effect would lead to a singular fit warning, meaning that it causes issues to the model estimate. One possible account might be that PC1z may not be showing much speaker-specific variation because we have normalised PC values that were based on spectral and duration values that had already been within-speaker normalised. 
+
+```{r}
+# converting variables into factor
+scores_df <- scores_df |> 
+  dplyr::mutate(
+    language = as.factor(language),
+    vowel = as.factor(vowel),
+    segment = as.factor(segment),
+    speaker = as.factor(speaker),
+    word = as.factor(word)
+  )
+
+# run a full model
+m1 <- lme4::lmer(PC1 ~ language + segment + vowel + language:segment + language:vowel + (1|speaker) + (1|word), data = scores_df, REML = FALSE)
+
+# model summary
+summary(m1)
+
+# nested model 1 -- testing the language-segment interaction
+m2 <- lme4::lmer(PC1 ~ language + segment + vowel + language:vowel + (1|speaker) + (1|word), data = scores_df, REML = FALSE)
+
+# model comparison
+anova(m1, m2, test = "Chisq")
+
+# nested model 2 -- testing the language-vowel interaction
+m3 <- lme4::lmer(PC1 ~ language + segment + vowel + language:segment + (1|speaker) + (1|word), data = scores_df, REML = FALSE)
+
+# model comparison
+anova(m1, m3, test = "Chisq")
+
+# post-hoc analysis
+## between-group effects of each language
+emmeans::emmeans(m1, pairwise ~ language | segment:vowel, adjust = "tukey")
+```
+
+## Summary
+
+I hope I have shown that PCA is a strong tool to **identify salient dimensions** in the data in a **bottom-up/data-driven** manner. It projects the data onto a new dimension based on the identified **principal components**. Furthermore, we can obtain **PC scores** for each observation along the PC dimensions, and we can use them as **input** to further statistical analysis. The flexibility in the choice of statistical modelling is an advantage of PCA. 
+
+Summarising what we have found so far:
+
+- PCA here identifies **four principal components (PCs)** that explains 32.76% (PC1), 26.92% (PC2), 24.64% (PC3) and 15.68% (PC4) of the variance in the data. 
+
+- The largest proportion of variance is explained by PC1 that captures **a covariation of F2 and F3** as suggested by the **biplot**. The data visualisation clearly shows that English /l/ and /ɹ/ can be distinguished along PC1 (English /l/: higher PC1 values, English /ɹ/: lower PC1 values)
+
+- We can also use **PC scores as data** for further statistical analysis. Analysis with linear mixed-effect models shows that:
+
+  - the interactions ```language:vowel``` and ```language:segment``` are both statistically significant
+  
+  - L1 Japanese and L1 English speakers differ in PC1 values at statistically significant level across all conditions but for English /l/ in the /i/ context.
+
+
 # Functional Principal Component Analysis (FPCA)
+
+In the previous section, we performed **principal component analysis (PCA)** on the static data -- i.e., the midpoint measurement of formant frequencies in the production of English /l/ and /ɹ/ by L1 Japanese and L1 English speakers. We have found that **F2** and **F3** seem to be the key in understanding their production judging from their contributions to PC1. 
+
+Whereas we have identified **what parameters** would characterise the between-group difference, it does not tell us much about **how** the two speaker groups differ. More specifically, we now know that **F2** and **F3** are important to understand English /l/ and /ɹ/ productions better, our ultimate aim is to know **how** L1 Japanese speakers differ from L1 English speakers in producing English /l/ and /ɹ/. Let's turn to **dynamic analysis** and explore how the two groups of speakers differ in the realisations of **F2** and **F3** over time. 
+
+We will use **Functional Principal Component Analysis (FPCA)** to explore salient dynamic properties in the data. The basic architecture is quite similar to the ordinary PCA that we have just seen with a couple of key differences as it deals with **functional** data. 
+
 
 # Preliminaries
 
 ## Installing/loading packages
 
+For the dynamic analysis using FPCA, we are using ```fdapace()``` package, so let's install it here.
+
 ```{r warning=FALSE, message=FALSE}
 # installing packages
 # install.packages("tidyverse")
-# install.packages("mgcv")
-# install.packages("itsadug")
-# install.packages("tidymv")
-# install.packages("tidygam")
+# install.packages("fdapace")
 
 # importing packages
 library(tidyverse)
@@ -545,33 +781,78 @@ fdapace::CheckData(input_df$Ly, input_df$Lt)
 df_dyn_fpca <- fdapace::FPCA(Ly = input_df$Ly, input_df$Lt, optns = list(plot = TRUE))
 ```
 
-## checking fpca results
+## Checking fpca results
+
+Let's look into the results here. ```summary(df_dyn_fpca)``` tells you what attributes are stored in the FPCA data:
+
+```{r}
+summary(df_dyn_fpca)
+```
+
+Eigenvalues are stored in ```lambda```. Similarly in the ordinary PCA, this shows how much variance is explained by each FPCA. This case, FPC1 explains quite a lot of variance in the data, so we might only need to look at FPC1 to understand an overall trend in the F2 dynamics. 
 
 ```{r}
 # eigenvalues
 df_dyn_fpca$lambda
+```
 
+The cumulative proportion of variance is stored in ```cumFVE```. 
+
+```{r}
 # the cumulative percentage of variance explained by the eigenvalue
 df_dyn_fpca$cumFVE
 
+
+```
+
+And as we did for the oridinary PCA, we can calculate ```cumFVE``` using eigenvalues (```lambda```). This manual approach differs slightly from the output shown with ```df_dyn_fpca$cumFVE``` reflecting slightly different calculation approaches, but you can see that the overall trend is still quite similar. 
+
+```{r}
+# calculating proportion of variance from eigenvalues
+fpca_var_exp <- df_dyn_fpca$lambda / sum(df_dyn_fpca$lambda)
+
+# compare this with cumFVE
+fpca_var_exp
+
+df_dyn_fpca$cumFVE
+```
+
+The dynamic analysis introduces the **time** dimension. ```df_dyn_fpca$workGrid``` gives you the time points at which data are sampled.
+
+```{r}
 # list of sampling time
 df_dyn_fpca$workGrid
+```
 
-# PC scores -> each row is 1 token, each column is one PC
+PC scores are stored in ```df_dyn_fpca$xiEst```. Each row is 1 token, and each column corresponds to each FPC dimension.
+
+```{r}
+# PC scores 
 head(df_dyn_fpca$xiEst)
+```
+
+Finally, you can get a mean curve directly by applying ```GetMeanCurve``` and a scree plot with ```CreateScreePlot``` in the ```fdapace``` package. ```CreatePathPlot``` returns a plot showing individual trajectories. 
+
+```{r}
+# plot
+plot(df_dyn_fpca)
 
 # Mean curve
 fdapace::GetMeanCurve(Ly = input_df$Ly, Lt = input_df$Lt, optns = list(plot = TRUE))
 
-# plot
-plot(df_dyn_fpca)
-
 # scree plot
-CreateScreePlot(df_dyn_fpca)
+fdapace::CreateScreePlot(df_dyn_fpca)
 
 # path plot
-CreatePathPlot(df_dyn_fpca, xlab = "normalised time", ylab = "F2 (z-normalised)")
+fdapace::CreatePathPlot(df_dyn_fpca, xlab = "normalised time", ylab = "F2 (z-normalised)")
 ```
+
+## Understanding variation captured by FPCs
+
+We have seen that our FPCA analysis identifies that FPC1 captures the majority of variation observed in the data. Let's check the details of this. The code below is from Strycharczuk et al. (2024) -- see the file "diphthongisation_paper.html" stored in the repository. 
+
+The code below lets you visualise what variation is captured in FPC1 by adding and subtracting standard deviation to/from the mean curve.
+
 ```{r}
 # function: get PC scores + return data frame with PCs for each token
 get_pc_scores <- function(fpcaObj){
@@ -594,5 +875,234 @@ meta <- df_dyn |>
 
 ## merge the list and meta data - unique(meta) because otherwise there would be lots of duplicates
 dat <- left_join(pc_df, unique(meta), by = "file")
+
+# function: define perturbation function (±Q = ±sd, k = PC number)
+perturbation <- function(fpcaObj, Q, k){
+  Q * sqrt(fpcaObj$lambda[k]) * fpcaObj$phi[,k] + fpcaObj$mu
+}
+
+# function: create perturbation object with mean and ±Q sd as a data frame (for one PC only)
+# can validate against fdapace::GetMeanCurve and fdapace::CreateModeOfVarPlot
+perturbation_object <- function(fpcaObj, Q, k){
+  time <- fpcaObj$workGrid # grid of time values
+  mean <- fpcaObj$mu # mean trajectory
+  Qplus <- perturbation(fpcaObj, Q, k) # +Q sd
+  Qminus <- perturbation(fpcaObj, -Q, k) # -Q sd
+  df <- cbind(time, mean, Qplus, Qminus)
+  colnames(df) <- c("time", "mean", "Qplus", "Qminus")
+  df <- data.frame(df)
+  df$PC <- paste0("PC", k) # add PC colname
+  return(df)
+}
+
+# function: create perturbation data frame with mean and ±Q sd (for all PCs)
+# to do: add ability to pass list of Q values for gradient perturbation function
+get_perturbation <- function(fpcaObj, Q){
+  n_pcs <- length(fpcaObj$lambda)
+  k <- 1:n_pcs
+  df <- lapply(k, perturbation_object, fpcaObj=fpcaObj, Q=Q)
+  df <- dplyr::bind_rows(df) # unnest lists into single df
+  return(df)
+}
+
+# get mean trajectory and ±2 sd for all PCs
+Q <- seq(from = -2, to = 2, by = 0.1)
+pQ <- lapply(Q, get_perturbation, fpcaObj = df_dyn_fpca)
+names(pQ) <- Q # name pQ lists using value of Q
+pQ <- dplyr::bind_rows(pQ, .id = "Q") # collapse lists together
+pQ$Q <- as.numeric(pQ$Q) # make 'Q' column numeric
+
+# visualise variation along each FPC
+pQ |> 
+  dplyr::filter(PC %in% c('PC1','PC2', 'PC3', 'PC4')) |> 
+  dplyr::mutate(
+    PC = case_when(
+      PC == "PC1" ~ "FPC1",
+      PC == "PC2" ~ "FPC2",
+      PC == "PC3" ~ "FPC3",
+      PC == "PC4" ~ "FPC4"
+    )
+  ) |> 
+  tidyr::pivot_longer(Qplus:Qminus, names_to = "Qsd", values_to = "value") |>
+  ggplot2::ggplot() +
+  aes(x = time, y = value, colour = Q, group = interaction(Q, Qsd)) +
+  geom_path() +
+  facet_wrap(~ PC, ncol = 2) +
+  scale_colour_gradient2(low = "#E69F00", mid = "#56B4E9", high = "#009E73", midpoint = 0)+
+  labs(x = "Time (normalised)", y = "Reconstructed F2 values", color = "PC score")
+```
+
+Remember that FPC1 explains 79.23% of the variance in the data. FPC1 shows that the variation is larger towards the end of the interval, which seems to suggest that FPC1 captures the difference in the shape and height of F2 trajectories depending on the vowel context. FPC2, on the other hand, shows a greater variation closer to the onset of the interval, which might correspond to the difference between English /l/ and /ɹ/.
+
+## Reconstructing F2 trajectories based on FPCs
+
+We can reconstruct the F2 trajectories using the information captured by each FPC to better understand the dimension captured by FPC1.
+
+### working out necessary parameters
+
+Let's first work out parameters required for reconstructing the original PC1 trajectories. This includes: (1) mean curve, (2) time points used to fit FPCA, (3) eigenfunction associated with each time point and (4) PC loadings for each PC. These are stored in the ```fdapace::FDA``` object that we obtained from the FPCA analysis earlier. The following code computes eigenfunctions manually.
+
+```{r}
+# mean fPC1 trajectory
+# pc1_mean_curve <- fdapace::GetMeanCurve(Ly = input.PC1$Ly, Lt = input.PC1$Lt, optns = list(plot = TRUE))
+mu_values <- data.frame(df_dyn_fpca$mu) # mean curve values
+mu_time <- data.frame(df_dyn_fpca$workGrid) # timepoints used for estimating the curve
+phi <- data.frame(df_dyn_fpca$phi) # eigenfunction at each timepoint: workGrid * nlambda (e.g., 255 = 51 workGrid * 5 lambda)
+lambda <- data.frame(df_dyn_fpca$lambda) # PC loadings for each PC: currently 5
+
+# create a data frame containing mean curve, time and eigenfunctions assocaited with each PC at each time point
+## add an extra column 'col_number' as a common index across the data frames - useful when merging everything together later on
+### mean curve
+mu_values <- mu_values |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### sampling time points
+mu_time <- mu_time |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### eigenfunction
+phi <- phi |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### pc loadings
+lambda <- lambda |>  
+  dplyr::mutate(
+    PC = str_c("PC", row_number()),
+    PC = str_c(PC, "lambda", sep = "_")
+  ) |>  
+  tidyr::pivot_wider(names_from = "PC", values_from = "df_dyn_fpca.lambda") |>  
+  dplyr::slice(rep(1:n(), each = 51)) |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+  
+## merging all data together one by one
+rec <- dplyr::left_join(mu_values, mu_time, by = "col_number")
+rec <- dplyr::left_join(rec, phi, by = "col_number")
+rec <- dplyr::left_join(rec, lambda, by = "col_number")
+
+## tidying up some column names
+rec <- rec |>  
+  dplyr::select(col_number, df_dyn_fpca.workGrid, df_dyn_fpca.mu, X1, X2, X3, X4, PC1_lambda, PC2_lambda, PC3_lambda, PC4_lambda) |>  
+  dplyr::rename(
+    mean = df_dyn_fpca.mu,
+    time = df_dyn_fpca.workGrid,
+    PC1_eigen = X1,
+    PC2_eigen = X2,
+    PC3_eigen = X3,
+    PC4_eigen = X4
+  )
+
+## plotting the eigenfunctions - this should match with a sub-plot in bottom right created with plot(PC1)
+rec |>  
+  ggplot() +
+  # geom_path(aes(x = time, y = mean)) +
+  geom_path(aes(x = time, y = PC1_eigen), colour = "black", linewidth = 1.5) +
+  geom_path(aes(x = time, y = PC2_eigen), colour = "red", linetype = 2, linewidth = 1.5) +
+  geom_path(aes(x = time, y = PC3_eigen), colour = "darkgreen", linetype = 3, linewidth = 1.5) +
+  # geom_path(aes(x = time, y = value, colour = pc)) +
+  geom_hline(yintercept = 0) +
+  labs(x = "time", y = "eigenfunctions", title = "First 3 eigenfunctions")
+
+## check if this matches plot(PC1)
+plot(df_dyn_fpca)
+```
+
+Let's now merge the FPCA parameters with the meta data.
+
+```{r}
+# PC scores -> each row is 1 token, each column is one PC
+head(df_dyn_fpca$xiEst)
+
+# PC scores have already been added to the main data set
+head(dat)
+
+# duplicate each row by 51 times 
+dat_time <- dat |> 
+  dplyr::slice(rep(1:n(), each = 51))
+
+# add col_names to merge with the other data frame
+dat_time <- dat_time |>  
+  dplyr::group_by(file) |>  
+  dplyr::mutate(
+    col_number = row_number()
+  ) |>  
+  ungroup()
+
+# merge
+dat_time <- left_join(dat_time, rec, by = "col_number")
+```
+
+### Reconstructed individual F2 trajectories based on FPC1
+
+Finally, here is the reconstructed F2 trajectories based on FPC scores for FPC1.
+
+```{r}
+# reconstruct individual trajectory tokens
+dat_time <- dat_time |>  
+  dplyr::mutate(
+    PC1_reconstruct = PC1 * PC1_eigen + mean,
+    PC2_reconstruct = PC2 * PC2_eigen + mean,
+    PC3_reconstruct = PC3 * PC3_eigen + mean,
+    PC4_reconstruct = PC4 * PC4_eigen + mean
+  )
+
+# visualise FPC1
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = PC1_reconstruct, group = file, colour = context), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "F2", title = "Reconstructed F2 from FPC1") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_grid(liquid ~ language)
+```
+
+It is indeed true that FPC1 seems to capture variation associated with vowel context. The visualisation suggests that L1 English speakers have a smaller variation especially for English /ɹ/. It is also quite evident that L1 Japanese speakers do not seem to differentiate F2 trajectories between /æ/ and /u/, which is rather surprising. 
+
+### Reconstructed individual F2 trajectories based on FPC2
+
+What does F2 trajectory looks like when reconstructed from FPC2?
+
+```{r}
+# visualise FPC2
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = PC2_reconstruct, group = file, colour = context), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "F2", title = "Reconstructed F2 from FPC2") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_grid(liquid ~ language)
+```
+
+OK, so there's something interesting here: we speculated earlier that FPC2 may be capturing the difference between English /l/ and /ɹ/, but it doesn't seem to be the case. Rather, FPC2 seems to capture **the degree of vocalic anticipatory coarticulation** that can be observed during the liquid interval. 
+
+### Reconstructed individual F2 trajectories based on FPC1+FPC2
+
+Finally, it is also possible to account for a joint contribution of FPC1 and FPC2 by summing the values together:
+
+```{r}
+# reconstruct individual trajectory tokens
+dat_time <- dat_time |>  
+  dplyr::mutate(
+    joint_PC1_PC2 = (PC1 * PC1_eigen) + (PC2 * PC2_eigen) + mean
+  )
+
+# visualise FPC1+FPC2
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = joint_PC1_PC2, group = file, colour = context), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "F2", title = "Reconstructed F2 from FPC1+FPC2") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_grid(liquid ~ language)
 ```
 
