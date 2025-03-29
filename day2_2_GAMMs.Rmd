@@ -59,7 +59,6 @@ library(tidygam) # for 'get_gam_predictions'
 source("https://raw.githubusercontent.com/soskuthy/gamm_intro/master/gamm_hacks.r")
 ```
 
-
 ## Importing data set
 
 Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
@@ -69,37 +68,20 @@ Let's import the data set. We are using the data set openly available on the Ope
 df_dyn <- readr::read_csv("data/initial.liquid.dynamic.csv")
 ```
 
-# Check data
+# Data wrangling
 
-Similarly to the static analysis, let's spend some time inspecting the data set using ```colnames()```. 
+## Check data
+
+We always start with inspecting the data set using ```colnames()```. 
 
 ```{r}
 # Let's check what columns the data frame contains
 colnames(df_dyn)
 ```
 
-The majority of the variables in the data set are quite similar to the static data set. The dynamic data set also contains bark-normalised formant frequencies, but we won't be using them here. 
-
-The crucial difference between the static and the dynamic data sets is the ```time``` column. As I explained earlier, the crucial aspect in the dynamic analysis is the ```time``` dimension, and we are interested in the time-varying characteristics in formant trajectories. 
-
-Let's look into the ```time``` column in more detail. The following code displays what information is contained in the ```time``` column.
-
-```{r}
-df_dyn |> 
-  dplyr::group_by(time) |> 
-  dplyr::summarise() |> 
-  dplyr::ungroup()
-```
-
-According to the code above, the ```time``` dimension contains numbers from 0 to 100 with an increment of 10. The data set expresses the time dimension **proportionally** from 0% to 100%. This means that the beginning of an interval corresponds to 0% time point, and then we get time points 10%, 20%, 30% etc as time goes by, until 100% that corresponds to the end of an interval. 
-
-The next question here: what **interval** are we talking about? In the introduction section, I talked about the interaction between the liquid consonant and the following vowel. For this reason, we will treat the liquid and vowel intervals as one whole entity, in which each interval contains movement of the formant trajectories throughout the word-initial liquid and vowel intervals. This means that **0% time point corresponds to the onset of the word-initial liquid**, and **100% time point corresponds to the end point of the following vowel**.
-
-# Data wrangling
-
 ## Omitting irrelavent columns
 
-Let's tidy up the data a little bit to avoid further confusion. As done with the static anlaysis, we will try to remove columns that are no longer necessary. The three columns, ```IsApproximant```, ```IsAcoustic```, and ```omit``` can safely be removed, as well as some spectral measures including Bark-normalised and distance measures as they can be confusing later on. 
+We'll omit the columns we don't need.
 
 ```{r}
 # Let's check the number of "approximant" tokens
@@ -124,13 +106,14 @@ df_dyn |>
 df_dyn <- df_dyn |> 
   dplyr::select(-c(IsApproximant, IsAcoustic, omit, Barkf1, Barkf2, Barkf3, Barkf2f1, Barkf3f2, f2f1, f3f2))
 ```
+
 Let's check the column names again.
 
 ```{r}
 colnames(df_dyn)
 ```
 
-Note that we have a column called ```context```: this can be useful for grouping so let's keep them. But we can convert them into IPA symbols for a more intuitive representation:
+Let's also convert the ```context``` column into IPA symbols for a more intuitive representation:
 
 ```{r}
 # convert the ARPABET notation into IPA symbols
@@ -162,22 +145,11 @@ df_dyn |>
   dplyr::ungroup()
 ```
 
-### Your turn
-
-Similarly in the static analysis, please explore the data a little to understand the data better.
-
-You can start with checking the column names to see what variables are available in the data set. Then, use ```dplyr::group_by()```, ```dplyr::summarise()``` and ```dplyr::ungroup()``` functions to inspect the data.
-
-```{r}
-# Check data further
-# ...
-```
-
 # Data visualisation
 
 ## Scaling formant frequencies
 
-Now, let's visualise the dynamic data. The basic procedure is the same as in the static analysis; We first apply z-score normalisation to the formant frequencies to make sure that formant values are comparable across speakers. 
+Do you remember how to visualise the dynamic data? The basic procedure is the same as in the static analysis; We first apply z-score normalisation to the formant frequencies to make sure that formant values are comparable across speakers. 
 
 ```{r}
 df_dyn <- df_dyn |> 
@@ -207,17 +179,6 @@ df_dyn |>
   dplyr::ungroup() 
 ```
 
-### Your turn
-
-Write a code chunk to inspect the mean and sd of raw/scaled F2 and F3 values for each **speaker** and for **speaker group**. Think how you group the data in ```dplyr::group_by()```.
-
-```{r}
-# check mean and sd of raw/scaled F2 values for each speaker group
-# ...
-
-# check mean and sd of raw/scaled F3 values for each speaker group
-# ...
-```
 
 
 ## Visualisation
@@ -260,30 +221,6 @@ df_dyn |>
   labs(x = "time", y = "F1 (z-normalised)", title = "smoothed time-varying change in F1 frequency") +
   theme(strip.text.y = element_text(angle = 0))
 ```
-
-### Your turn
-
-Please try writing a code chunk to visualise (1) raw and (2) smoothed trajectories. You could try combining them both, too. Please feel free to explore your favourite colour schemes! 
-
-```{r warning=FALSE}
-# F2 - raw trajectory
-# ...
-
-# F2 - smooths
-# ...
-
-```
-
-
-```{r warning=FALSE}
-# F3 - raw trajectory
-# ...
-
-# F3 - smooths
-# ...
-
-```
-
 
 
 # How do we model F2 trajectory?
@@ -1211,9 +1148,9 @@ How did you find GAMMs so far? What types of data/research questions might be su
 
 # References
 
-This workshop material is heavily drawn from the great existing tutorials and empirical papers. All of these provide great details in GAMMs modelling and I would highly recommend all of these if you would like to know more about GAMMs.
+The GAMMs section is heavily drawn from the great existing tutorials and empirical papers. All of these provide great details in GAMMs modelling and I would highly recommend all of these if you would like to know more about GAMMs.
 
-Chuang, Y.-Y., Fon, J., Papakyritsis, I., Baayen, H., & Ball, M. J. (2021). Analyzing Phonetic Data with Generalized Additive Mixed Models. In M. Ball (Ed.), **Manual of Clinical Phonetics** (1st ed., Vol. 1, pp. 108–138). Routledge. https://doi.org/10.4324/9780429320903-10
+Chuang, Y.-Y., Fon, J., Papakyritsis, I., Baayen, H., & Ball, M. J. (2021). Analyzing Phonetic Data with Generalized Additive Mixed Models. In M. Ball (Ed.), *Manual of Clinical Phonetics* (1st ed., Vol. 1, pp. 108–138). Routledge. https://doi.org/10.4324/9780429320903-10
 
 Coretta, S. (2024). Learn Generalised Additive (Mixed) Models. Online tutorial. https://stefanocoretta.github.io/learnGAM/
 
