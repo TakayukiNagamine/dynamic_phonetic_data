@@ -1,0 +1,1232 @@
+---
+title: 'Day 2 Session 2: <br> Dynamic spectral analysis <br> using Generalised Additive Mixed-Effect Models (GAMMs)'
+author: "Takayuki Nagamine"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+    # html_document: 
+    # toc: true
+    # toc_float: true
+    # number_sections: true
+---
+
+```{r include=FALSE}
+library(rmdformats)
+library(tidyverse)
+
+# setting the plot theme globally
+theme_set(theme_classic())
+
+# define colour-blind-friendly colour palette 
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+"#D55E00", "#CC79A7")
+```
+
+# Introduction
+
+In the previous sesseion, we tried running a statistical analysis using **linear mixed-effect modelling**. It was a **static** analysis based on a single point measurement of formant frequencies to characterise differences of the English /l/ and /ɹ/ quality produced by L1 Japanese and L1 English speakers. 
+
+While we observed some key between-group differences in the static data, the static analysis did not allow us to answer **why** such differences would occur. Specifically, it was not very unclear whether it is just the height of the formant frequencies that are different, or the formant frequency difference is just a small part of a broader, more fundamental difference. 
+
+More crucially, analysing the liquid consonants based on the static analysis lacks the consideration that **English liquid consonants are inherently dynamic**. This means that their spectral properties vary as a function of time, and a single-point measurement of formant frequencies is not adequate in characterising the English liquid quality. Also, English liquids show a strong interaction with the neighbouring vowels, so we need to consider how English liquids are coarticulated with the following vowel. 
+
+Taken together, we need to take the **temporal** dimension into account when analysing English liquids. The possible liquid-vowel interaction may mean that L1 Japanese speakers may produce the sequence of liquid consonant and a vowel with a different interaction pattern from that of L1 English speakers. 
+
+In this session, therefore, let's try modelling the whole **formant contours** directly using Generalised Additive Mixed-Efefct Models (GAMMs).
+
+# Generalised Additive Mixed-Effect Models (GAMMs)
+
+# Preliminaries
+
+## Installing/loading packages
+
+As always, let's first install and load R packages that we are using in the static analysis section. The installation commands have been commented out, but please uncomment them and install the packages if you do not have them on your machine yet.  
+
+```{r warning=FALSE, message=FALSE}
+# installing packages
+# install.packages("tidyverse")
+# install.packages("mgcv")
+# install.packages("itsadug")
+# install.packages("tidymv")
+# install.packages("tidygam")
+
+# importing packages
+library(tidyverse)
+library(mgcv)
+library(itsadug)
+# library(tidymv) # for 'get_gam_predictions'
+library(tidygam) # for 'get_gam_predictions'
+source("https://raw.githubusercontent.com/soskuthy/gamm_intro/master/gamm_hacks.r")
+```
+
+
+## Importing data set
+
+Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
+
+```{r message=FALSE}
+# import the csv file "initial.liquid.dynamic.csv" from the "data" directory and save it as "df_dyn"
+df_dyn <- readr::read_csv("data/initial.liquid.dynamic.csv")
+```
+
+# Check data
+
+Similarly to the static analysis, let's spend some time inspecting the data set using ```colnames()```. 
+
+```{r}
+# Let's check what columns the data frame contains
+colnames(df_dyn)
+```
+
+The majority of the variables in the data set are quite similar to the static data set. The dynamic data set also contains bark-normalised formant frequencies, but we won't be using them here. 
+
+The crucial difference between the static and the dynamic data sets is the ```time``` column. As I explained earlier, the crucial aspect in the dynamic analysis is the ```time``` dimension, and we are interested in the time-varying characteristics in formant trajectories. 
+
+Let's look into the ```time``` column in more detail. The following code displays what information is contained in the ```time``` column.
+
+```{r}
+df_dyn |> 
+  dplyr::group_by(time) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+```
+
+According to the code above, the ```time``` dimension contains numbers from 0 to 100 with an increment of 10. The data set expresses the time dimension **proportionally** from 0% to 100%. This means that the beginning of an interval corresponds to 0% time point, and then we get time points 10%, 20%, 30% etc as time goes by, until 100% that corresponds to the end of an interval. 
+
+The next question here: what **interval** are we talking about? In the introduction section, I talked about the interaction between the liquid consonant and the following vowel. For this reason, we will treat the liquid and vowel intervals as one whole entity, in which each interval contains movement of the formant trajectories throughout the word-initial liquid and vowel intervals. This means that **0% time point corresponds to the onset of the word-initial liquid**, and **100% time point corresponds to the end point of the following vowel**.
+
+# Data wrangling
+
+## Omitting irrelavent columns
+
+Let's tidy up the data a little bit to avoid further confusion. As done with the static anlaysis, we will try to remove columns that are no longer necessary. The three columns, ```IsApproximant```, ```IsAcoustic```, and ```omit``` can safely be removed, as well as some spectral measures including Bark-normalised and distance measures as they can be confusing later on. 
+
+```{r}
+# Let's check the number of "approximant" tokens
+df_dyn |> 
+  dplyr::group_by(IsApproximant) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Let's check the number of tokens of good recording quality
+df_dyn |> 
+  dplyr::group_by(IsAcoustic) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# How about 'omit'?
+df_dyn |> 
+  dplyr::group_by(omit) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Remove columns that we no longer need
+df_dyn <- df_dyn |> 
+  dplyr::select(-c(IsApproximant, IsAcoustic, omit, Barkf1, Barkf2, Barkf3, Barkf2f1, Barkf3f2, f2f1, f3f2))
+```
+Let's check the column names again.
+
+```{r}
+colnames(df_dyn)
+```
+
+Note that we have a column called ```context```: this can be useful for grouping so let's keep them. But we can convert them into IPA symbols for a more intuitive representation:
+
+```{r}
+# convert the ARPABET notation into IPA symbols
+df_dyn <- df_dyn |> 
+  dplyr::mutate(
+    context = case_when(
+      context == "AE" ~ "/æ/",
+      context == "IY" ~ "/i/",
+      context == "UW" ~ "/u/"
+    )
+  )
+```
+
+## Checking the number of participants, tokens...
+
+Let's also obtain some descriptive statistics here. Note that we need to divide the number of rows by 11 to obtain the accurate number of tokens, as one token now has 11 time points.
+
+```{r}
+# number of participants
+df_dyn |> 
+  dplyr::group_by(language) |> 
+  dplyr::summarise(n = n_distinct(speaker)) |> 
+  dplyr::ungroup()
+
+# number of tokens per segment
+df_dyn |> 
+  dplyr::group_by(segment) |> 
+  dplyr::summarise(n = n()/11) |> # divide by 11 time points
+  dplyr::ungroup()
+```
+
+### Your turn
+
+Similarly in the static analysis, please explore the data a little to understand the data better.
+
+You can start with checking the column names to see what variables are available in the data set. Then, use ```dplyr::group_by()```, ```dplyr::summarise()``` and ```dplyr::ungroup()``` functions to inspect the data.
+
+```{r}
+# Check data further
+# ...
+```
+
+# Data visualisation
+
+## Scaling formant frequencies
+
+Now, let's visualise the dynamic data. The basic procedure is the same as in the static analysis; We first apply z-score normalisation to the formant frequencies to make sure that formant values are comparable across speakers. 
+
+```{r}
+df_dyn <- df_dyn |> 
+  dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
+  dplyr::mutate(
+    f1z = as.numeric(scale(f1)), # scale f1 into z-score
+    f2z = as.numeric(scale(f2)), # scale f2 into z-score
+    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+  ) |> 
+  dplyr::ungroup() # don't forget ungrouping
+```
+
+## Descriptive statistics
+
+Let's check the mean and SD for both raw and normalised formant values: just see F1 for now. Note that the mean z-scores do not seem to look zero, but this is because computers are not very good at dealing with very small numbers (e.g., decimals) and some fluctuations occur in computing the values.
+
+```{r}
+# check mean and sd of raw/scaled F1 values for each speaker
+df_dyn |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f1_mean = mean(f1),
+    f1_sd = sd(f1),
+    f1z_mean = mean(f1z),
+    f1z_sd = sd(f1z)
+  ) |> 
+  dplyr::ungroup() 
+```
+
+### Your turn
+
+Write a code chunk to inspect the mean and sd of raw/scaled F2 and F3 values for each **speaker** and for **speaker group**. Think how you group the data in ```dplyr::group_by()```.
+
+```{r}
+# check mean and sd of raw/scaled F2 values for each speaker group
+# ...
+
+# check mean and sd of raw/scaled F3 values for each speaker group
+# ...
+```
+
+
+## Visualisation
+
+### raw trajectories
+
+Let's visualise the formant trajectories here. In the dynamic analysis, it is almost always the case that we take the **time** dimension on the x-axis and the dependent variable on the y-axis. This allows us to see how e.g., F1 changes over time. 
+
+We also make sure about the variable **grouping** to tell ```ggplot2``` how to organise the data. This can be done via ```group``` argument in the ```geom``` function. Each formant trajectory should come from one audio file, which is stored in the ```file``` column. We use this information for grouping. 
+
+```{r warning=FALSE}
+# F1 - raw trajectories
+df_dyn |> 
+  ggplot(aes(x = time, y = f1z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F1 (z-normalised)", title = "time-varying change in F1 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### smooths
+
+While I usually prefer just plotting raw trajectories because it is faithful to the nature of the data, I must admit that it is sometimes very difficult to see what's going on there. 
+
+If you prefer, we could also just plot **smooths** to highlight the nonlinear between-group difference. The code below adds smoothed F1z trajectories to the raw data we just plotted (but I have commented out the raw trajectories for now). Note the difference in grouping; we used the ```file``` variable for the raw trajectories, but for smooths we need to use the ```language``` variable because we would like one smoothed trajectory for each L1 group. 
+
+```{r warning=FALSE}
+# F1 - smooths
+df_dyn |> 
+  ggplot(aes(x = time, y = f1z)) +
+  # geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  # geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.2, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F1 (z-normalised)", title = "smoothed time-varying change in F1 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### Your turn
+
+Please try writing a code chunk to visualise (1) raw and (2) smoothed trajectories. You could try combining them both, too. Please feel free to explore your favourite colour schemes! 
+
+```{r warning=FALSE}
+# F2 - raw trajectory
+# ...
+
+# F2 - smooths
+# ...
+
+```
+
+
+```{r warning=FALSE}
+# F3 - raw trajectory
+# ...
+
+# F3 - smooths
+# ...
+
+```
+
+
+
+# How do we model F2 trajectory?
+
+I hope that you have enjoyed data visualisation! You'd know if you have tried plotting **F2**, but it seems that the F2 trajectories show very interesting between-group difference. 
+
+This is also a very interesting dimension to explore from the theoretical point of view, because previous research has claimed that L1 Japanese speakers would make it **easier** to acquire the use of F2 in a target-like manner. But the dynamic data suggests that L1 Japanese speakers do something really different from L1 English speakers. Let's take a look at trajectories first below:
+
+```{r warning=FALSE}
+# F2
+df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "raw/smoothed time-varying change in F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+L1 English speakers follow somewhat consistent patterns across vowel contexts for both English /l/ and /ɹ/. They all start at a lower F2 at the beginning of the liquid onset (= 0%). The trajectories then go higher up to the maximal point in the middle of the interval (= around 50%). After reaching the highest peak, the trajectories go down towards the end of the interval (= 100%). Although there are some differences in terms of the timing that they achieve the maximal point, the overall patterns are fairly consistent. 
+
+L1 Japanese speakers, on the other hand, show distinct trajectory patterns across vowel contexts. In the /æ/ context, both English /l/ and /ɹ/ trajectories show an almost monotonic, linear decrease from the liquid onset (= 0%) towards the vowel offset (= 100%). The trajectories in the /u/ context are also similar. In these two vowel contexts, the English /ɹ/ trajectories seem to mark the highest point at around 25% time point, but it is not as pronounced as that of L1 English speakers. 
+
+Their /i/ trajectories, on the other hand, show a similar pattern to that of L1 English speakers. They start at a lower F2 value at the liquid onset (= 0%), go higher up, and then show a slight decrease towards the end of the interval. The timing of the maximal point, however, is quite early (i.e., at around 40-45% time point) compared to L1 English speakers. 
+
+### Your turn
+
+Please compare and discuss the static and dynamic plots for F2. 
+
+**Note**: The static analysis is based on the F2 measurement at the **liquid midpoint**. The dynamic analysis shows time-varying changes in F2 over **liquid-vowel** interval. 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=8}
+# load static data
+load(file = "data/df_mid.rda")
+
+# F2 static
+f2_static <- df_mid |> 
+  ggplot(aes(x = language, y = f2z)) +
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  ylim(c(-4, 4)) +
+  facet_grid(segment ~ vowel) +
+  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 liquid midpoint") +
+  theme(strip.text.y = element_text(angle = 0))
+
+# F2 dynamic
+f2_dynamic <- df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "F2 change over liquid-vowel interval") +
+  theme(strip.text.y = element_text(angle = 0))
+
+ggpubr::ggarrange(f2_static, f2_dynamic, ncol = 1)
+```
+
+# From linear to non-linear modelling: Introducting Generalised Additive Mixed Effects Models (GAMMs)
+
+## Modelling non-linearity in the data
+
+Here, we would like to model the formant trajectory directory without relying just on a straight line. This can be illustrated by  the plot below that shows the time-varying transition of F2 signals (in Hz) for the word *reap* produced by an L1 Japanese speaker.
+
+As you can see in the plot below, the linear regression line (in yellow) does not capture the overall trend of the formant trajectory anymore. What we would ideally like is the non-linear curve in skyblue.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df_dyn |> 
+  dplyr::filter(file == "JP_3bcpyh_reap027_0001") |> 
+  ggplot(aes(x = time, y = f2)) +
+  geom_point(size = 5, shape = 1) +
+  geom_smooth(method = "lm", se = FALSE, colour = cbPalette[2]) +
+  geom_smooth(method = "gam", se = FALSE, colour = cbPalette[3]) +
+  labs(x = "Proportional time (%)", y = "F2 (Hz)", title = "F2 dynamics")
+```
+
+One solution to the non-linear modelling is via **Generalised Additive (Mixed Effects) Models: GA(M)Ms**. While GA(M)Ms are similar with the linear models in that they both can capture linear trends with **parametric terms**, GA(M)Ms also incorporate **smooth terms** that can capture non-linear relationships between the variables. Put it simply, GA(M)Ms is a combination (i.e., **addition**) of multiple **(smooth) functions**, which can be notated as:
+
+$y = \alpha + f(x) + \epsilon$
+
+where $f(x)$ just means **some function of $x$** and $\epsilon$ indicates an error term. 
+
+## Basis functions
+
+GA(M)Ms models the non-linearity in the data by combining multiple **basis functions**. The number of basis functions is related to the **smoothness/wiggliness** of a given GA(M)Ms model, such that, for example, there is more room for a GA(M)Ms trajectory to be smoother if the number of basis functions is high. Smoothness/wiggliness of a GA(M)Ms model is determined by the **smoothing parameters**, which GAM automatically estimate based on the data, and the number of basis function sets an upper limit as to how smooth a model can be.
+
+What you can adjust in your model is the number of **knots**. A knot is a converging point between each of the basis functions, and the number of knots corresponds to **the number of basis functions + 1**. 
+In the plot below, I show ten basis functions based on **cubic regression splines**, which means that there are **eleven** knots that I specify in the GAM model. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(mgcv)
+
+# Simulate some data
+set.seed(123)
+df <- tibble(
+  x = seq(0, 10, length.out = 200),  # Predictor variable
+  y = sin(x) + rnorm(200, sd = 0.2)   # Non-linear relationship with noise
+)
+
+# Fit a GAM model using cubic regression splines
+gam_model_cr <- gam(y ~ s(x, k = 11, bs = "cr"), data = df, method = "REML")
+
+# Extract basis functions
+basis_cr <- predict(gam_model_cr, type = "lpmatrix")  # Design matrix of basis functions
+
+basis_df_cr <- as_tibble(basis_cr) |> 
+  mutate(x = df$x) |> 
+  rename(
+    Intercept = `(Intercept)`
+  ) |> 
+  pivot_longer(-x, names_to = "basis_function", values_to = "value") |> 
+  mutate(
+    basis_function = factor(basis_function, levels = c("Intercept", "s(x).1", "s(x).2", "s(x).3", "s(x).4", "s(x).5", "s(x).6", "s(x).7", "s(x).8", "s(x).9", "s(x).10"))
+  )       
+
+# Extract overall smooth predictions
+df <- df |> 
+  mutate(smooth = predict(gam_model_cr))  # Predicted smooth values
+
+# Define color palette
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", 
+               "#F0E442", "#0072B2", "#D55E00", "#CC79A7",
+               "#999999", "#663399", "#8B0000")  # 11 colors for basis functions
+
+# Superimposed plot
+ggplot() +
+  # Basis functions
+  geom_line(data = basis_df_cr, aes(x = x, y = value, color = basis_function), size = 1, alpha = 0.7) +
+  scale_color_manual(values = cbPalette) +
+  # Raw data points
+  geom_point(data = df, aes(x = x, y = y), alpha = 0.3) +
+  # Smooth function (final sum of basis functions)
+  geom_line(data = df, aes(x = x, y = smooth), color = "#D55E00", size = 1.5, alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Superimposed Basis Functions & Final Smooth Curve",
+       subtitle = "Cubic Regression Splines (CR), k = 11",
+       x = "x",
+       y = "y")
+```
+
+There are a few types of basis functions that can be specified in the GAMMs model. Common ones include **thin plate regression splines (tp)** and **cubic regression splines (cr)**. They look quite different from each other, but resulting final smooth curve ends up very similar.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=8}
+library(tidyverse)
+library(mgcv)
+
+# Simulate some data
+set.seed(123)
+df <- tibble(
+  x = seq(0, 10, length.out = 200),  # Predictor variable
+  y = sin(x) + rnorm(200, sd = 0.2)   # Non-linear relationship with noise
+)
+
+# Fit a GAM model using cubic regression splines
+gam_model_cr <- gam(y ~ s(x, k = 11, bs = "cr"), data = df, method = "REML")
+
+# Extract basis functions
+basis_cr <- predict(gam_model_cr, type = "lpmatrix")  # Design matrix of basis functions
+
+basis_df_cr <- as_tibble(basis_cr) |> 
+  mutate(x = df$x) |> 
+  rename(
+    Intercept = `(Intercept)`
+  ) |> 
+  pivot_longer(-x, names_to = "basis_function", values_to = "value") |> 
+  mutate(
+    basis_function = factor(basis_function, levels = c("Intercept", "s(x).1", "s(x).2", "s(x).3", "s(x).4", "s(x).5", "s(x).6", "s(x).7", "s(x).8", "s(x).9", "s(x).10"))
+  )       
+
+# Extract overall smooth predictions
+df_cr <- df |> 
+  mutate(smooth = predict(gam_model_cr))  # Predicted smooth values
+
+# Fit a GAM model using thin plate spline
+gam_model_tp <- gam(y ~ s(x, k = 11, bs = "tp"), data = df, method = "REML")
+
+# Extract basis functions
+basis_tp <- predict(gam_model_tp, type = "lpmatrix")  # Design matrix of basis functions
+
+basis_df_tp <- as_tibble(basis_tp) |> 
+  mutate(x = df$x) |> 
+  rename(
+    Intercept = `(Intercept)`
+  ) |> 
+  pivot_longer(-x, names_to = "basis_function", values_to = "value") |> 
+  mutate(
+    basis_function = factor(basis_function, levels = c("Intercept", "s(x).1", "s(x).2", "s(x).3", "s(x).4", "s(x).5", "s(x).6", "s(x).7", "s(x).8", "s(x).9", "s(x).10"))
+  )       
+
+# Extract overall smooth predictions
+df_tp <- df |> 
+  mutate(smooth = predict(gam_model_tp))  # Predicted smooth values
+
+# Define color palette
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", 
+               "#F0E442", "#0072B2", "#D55E00", "#CC79A7",
+               "#999999", "#663399", "#8B0000")  # 11 colors for basis functions
+
+# Superimposed plot
+cr_plot <- ggplot() +
+  # Basis functions
+  geom_line(data = basis_df_cr, aes(x = x, y = value, color = basis_function), size = 1, alpha = 0.7) +
+  scale_color_manual(values = cbPalette) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Cubic Regression Splines (CR), k = 11",
+       x = "x",
+       y = "y")
+
+tp_plot <- ggplot() +
+  # Basis functions
+  geom_line(data = basis_df_tp, aes(x = x, y = value, color = basis_function), size = 1, alpha = 0.7) +
+  scale_color_manual(values = cbPalette) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Thin Plate Regression Splines (TP), k = 11",
+       x = "x",
+       y = "y")
+
+ggpubr::ggarrange(cr_plot, tp_plot, ncol = 1, common.legend = TRUE, legend = "right")
+```
+
+## Parametric and smooth terms
+
+Let's now go back again to our data set and see how a GAMMs model can be specified on R. For example, the model below is a GAM model (without a random effect) that captures time-varying non-linearity along the F2 dimension:
+
+```{r include=FALSE}
+# subsetting data -- for /l/
+df_dyn_L <- df_dyn |>
+  dplyr::filter(liquid == "L")
+
+# language variable
+df_dyn_L$language <- as.factor(df_dyn_L$language)
+levels(df_dyn_L$language)
+
+# vowel (context) variable
+df_dyn_L$context <- as.factor(df_dyn_L$context)
+levels(df_dyn_L$context)
+
+# speaker variable -- random effect
+df_dyn_L$speaker <- as.factor(df_dyn_L$speaker)
+levels(df_dyn_L$speaker)
+
+# word variable -- random effect
+df_dyn_L$word <- as.factor(df_dyn_L$word)
+levels(df_dyn_L$word)
+```
+
+
+```{r results=FALSE, warning=FALSE, message=FALSE}
+
+mgcv::bam(f2z ~ language + context + s(time) + s(time, by = language) + s(time, by = context), data = df_dyn_L)
+
+```
+
+
+The model specification notation is somewhat similar to the one for the ```lme4::lmer()``` convention for the linear models, so hopefully this isn't too complex for you. 
+
+As explained earlier, a GAM model can take two kinds of predictor variables: **parametric** and **smooth** terms. **Parametric terms** specify predictors that would influence a constant, overall influence on the dependent variable. This usually corresponds to the **height** of the trajectory. In the model above, this corresponds to ```language``` and ```context```. 
+
+The new addition from the linear model would be **smooth terms** which allow GA(M)Ms to fit non-linear effects as a function of a variable. Smooth terms are notated as ```s()```. This usually corresponds to the **shape** of the trajectory. And in the model above, you can see a series of ```s()``` terms, including ```s(time)```, ```s(time, by = language)``` and ```s(time, by = context)```. We will cover the specifics later, but basically these instruct GAM to model **the non-linearity seen in F2 (dependint variable) as a function of time**. 
+
+# Let's model F2 trajectory
+
+Let's try modelling a simple GAMMs model based on our data set. We start with a simple GAM model to model the effects of ```language``` and ```context``` on the F2 trajectory. 
+
+As usual, we'll first subset the data and then convert the variables into factor, a similar procedure to the static analysis. 
+
+```{r}
+# subsetting data -- for /l/
+df_dyn_L <- df_dyn |>
+  dplyr::filter(liquid == "L")
+
+# language variable
+df_dyn_L$language <- as.factor(df_dyn_L$language)
+levels(df_dyn_L$language)
+
+# vowel (context) variable
+df_dyn_L$context <- as.factor(df_dyn_L$context)
+levels(df_dyn_L$context)
+
+# speaker variable -- random effect
+df_dyn_L$speaker <- as.factor(df_dyn_L$speaker)
+levels(df_dyn_L$speaker)
+
+# word variable -- random effect
+df_dyn_L$word <- as.factor(df_dyn_L$word)
+levels(df_dyn_L$word)
+```
+
+## A simple (linear) model only with parametric terms
+
+What if we just model F2 only with parametric terms? Let's just start with **language** variable.
+
+```{r}
+# fit a model with parametric terms only
+m1 <- bam(f2z ~ language, data = df_dyn_L, method = "fREML")
+
+# model summary
+summary(m1)
+```
+
+
+The model output displays a section called **Parametric coefficients** which shows how each of the paraemetric term has an overall effect on the F2 values. But overall, the output looks pretty much the same with the linear mixed-effect modelling using ```lme4::lmer()```. 
+
+## Adding non-linearity
+
+Our first model ```m1``` models the constant effect on the ```language``` variable on the F2 values; that is, we could ask whether L1 English and L1 Japanese speakers are overall different in F2 frequencies. But also, as we saw earlier in data visualisation, there was a lot going on beyond the constant between-group difference. 
+
+Let's extend the model so that we can model the non-linear between-group difference. Here, we add a new **smooth** term ```s(time)``` that allows us to model the non-linear difference between L1 English and L1 Japanese speakers in the F2 values over **time**.
+
+```{r}
+# a model with a parametric and a smooth term
+m2 <- mgcv::bam(f2z ~ language + s(time, by = language), data = df_dyn_L, method = "fREML")
+
+# model summary
+summary(m2)
+```
+
+The top half of the model summary looks similar to the one for ```m1```. A new addition here is **Approximate significance of smooth terms**; this is where we can evaluate the performance of the smooth terms. There are two columns that you may not be familar with, but **edf** would be the most important here.
+
+- **edf** stands for **e**ffective **d**egree of **f**reedom. This signifies how many parameters are needed to represent the smooth.
+
+  - Edf indexes the degree of non-linearity of the smooth. An edf value closer to 1 means that the pattern modelled with ```s()``` is linear. 
+
+## Visualising GAM
+
+Unlike linear models, interpretation of non-linear patterns is quite tricky and complicated. So, data visualiastion is **crucial** in the modelling of non-linear relationships. Let's visualise the GAM model that we just modelled.
+
+The package ```itsadug``` lets you visualise the F2 smooths for each language group (L1 English and L1 Japanese speakers) as follows:
+
+```{r}
+itsadug::plot_smooth(m2, view = "time", plot_all = "language", rug = FALSE)
+```
+
+It is also possilbe to visualise the *difference* in F2 trajectories between the two speaker groups:
+
+```{r}
+itsadug::plot_diff(m2, view = "time", com = list(language = c("English", "Japanese")))
+```
+
+We start to see some interesting bits here. The first plot suggests that, overall, L1 Japanese speakers (in light blue) show a flat F2 trajectory compared to L1 English speakers (in light pink). The difference between the two trajectories lie almost throughout the time course; the two trajectories cross over each other at approximately 40% time point, where we find little difference, but otherwise the confidence interval for the **difference smooth** is not overlapping zero consistently. 
+
+## Model comparison
+
+There are a couple of ways of statistical significance testing, but it is always recommended to do this via **model comparison**. The idea is similar to when we fit linear models, with only a few differences: 
+
+- Instead of using ```anova()```, we use ```itsadug::compareML()``` function.
+
+- Also, make sure that your GA(M)Ms model is run based on the Maximal Likelihood (ML) estimation method. This can be specified by the argument ```method = "ML"```. Whereas restricted ML (```REML```) and fast restricted ML (```fREML```) are more efficient computationally, these cannot be used for model comparison.
+
+Here, let's compare whether an addition of the smooth term results in a better model fit. 
+
+```{r}
+# re-fitting the first model with the Maximal Likelihood estimation
+m1 <- mgcv::bam(f2z ~ language, data = df_dyn_L, method = "ML")
+
+# re-fitting the first model with the Maximal Likelihood estimation
+m2 <- mgcv::bam(f2z ~ language + s(time, by = language), data = df_dyn_L, method = "ML")
+
+# model comparison
+## full description
+itsadug::compareML(m1, m2, print.output = TRUE, suggest.report = TRUE)
+
+## brief output
+itsadug::compareML(m1, m2, print.output = FALSE)$table
+```
+
+The output again looks similar to the case of linear model comparisons using ```anova()```. It says that ```m2``` has a lower Akaike Infomration Criterion (AIC) scores than ```m1```. It also shows that ```m2``` has a lower (ML) score of 18012.74 compared to 19158.85 for ```m1```. These two measures index the degree of model fit, and the lower, the better. Overall, the model comparison suggests that the model with a smooth ```m2``` significantly improves the degree of model fit and is thus considered to be a better model than the model with parametric terms only ```m1```.
+
+## Modelling difference smooths
+
+As we are dealing with categorical predictors, it is possible to encode the non-linear **difference** into the model directly through **difference smooths**. Whereas we could stick to model two different smooths for each level in a predictor variable, we would ultimately know whether the two trajectories are statistically significantly different. The approach with difference smooth allows us to directly evaluate whether the between-group difference is significant or not. 
+
+To do this, we first need to convert the predictor variables into **ordered** variables, a special case of factor variables. Don't forget to execute both ```as.ordered()``` and ```"contr.tretment"``` as they are important in GAMMs.
+
+```{r}
+# converting language variable into ordered variable
+df_dyn_L$language.ord <- as.ordered(df_dyn_L$language)
+contrasts(df_dyn_L$language) <- "contr.treatment"
+```
+
+When trying to model with difference smooths, you need to specify the following:
+
+- a parametric term of the variable 
+
+- a smooth term of ```time``` without any specification
+
+- a smooth over ```time``` with the grouping specificaion ```by = language.ord```
+
+So, the model would look like this:
+
+```{r}
+# model
+m3 <- mgcv::bam(f2z ~ language.ord + s(time) + s(time, by = language.ord), data = df_dyn_L, method = "fREML")
+
+# summary
+summary(m3)
+```
+
+Let's take a look at parametric coefficients first. It says that the intercept is statistically significant, meaning that it's different from zero. ```language.ord.L``` does not show statistical significance, which would mean that there is no overall effect of ```language``` on the F2 values. 
+
+Let's now move to the smooth terms. The **edf** values are quite bigger than 1 for both smooth terms, indicating that they capture non-linearity. ```s(time)``` is statistically significant, meaning that ```time``` is a strong predictor of ```f2z```. In other words, ```time``` is not just linearly related to ```f2z```, thus indicating the non-linearity. Also, the statistical significance of ```s(time):language.ordJapanese``` means that the relationship between ```time``` and ```f2z``` depends on the ```language.ord``` variable. That is, L1 English and L1 Japanese speakers show different non-linear trends in ```f2z``` over time at statistically significant level. 
+
+### Comparison between ```m2``` and ```m3```
+
+Let's compare the output of ```m3``` with that of ```m2``` that we saw earlier. For ```m2```, we fitted separate smooths for each level in ```language``` variable, and the model output only shows whether each smooth is significantly different from zero. I've reiterated the model specification here for convenience:
+
+```{r}
+# a model with a parametric and a smooth term
+m2 <- mgcv::bam(f2z ~ language + s(time, by = language), data = df_dyn_L, method = "fREML")
+
+# model summary
+summary(m2)
+```
+
+Focussing on the smooth term table, it has two lines: ```s(time):languageEnglish``` and ```s(time):languageJapanese```. Both show statistical significance, meaning that ```f2``` and ```time``` interacts non-linearly for both L1 English and L1 Japanese speakers. But this does not necessarily tell us whether the two groups are different. This is why modelling with **difference smooths** can be handy when the primary interest lies in comparing between-group differences in trajectory pattern. 
+
+## Adding ```context```
+
+So far, we have modelled the non-linear relationships between ```time``` and ```f2z``` only with the ```language``` variable. Let's add the ```context``` variable here as well. 
+
+### Your turn
+
+Sticking to the **difference smooths** approach, could you follow the procedures below and fit a model with ```language``` and ```context``` variables?
+
+### Converting the ```context``` variable into ordered variables
+
+```{r}
+# converting language variable into ordered variable
+# df_dyn_L$context.ord <- ...
+# don't forget the second line
+```
+
+### Fitting the model
+
+Please define a model with ```language.ord``` and ```context.ord```, incorporated into both parametric and smooth terms, and save the model as ```m4```.
+
+```{r}
+# fitting a model with language.ord and context.ord
+# m4 <- ...
+
+# model summary
+# ...
+```
+
+
+### Model comparison
+
+The practice here allows us to proceed onto model comparison between the full model with both ```language.ord``` and ```context.ord```, and one without either of these. Could you come up with a good way to do this? Would you be able to say what effects you are testing through model comparison? 
+
+You can re-use ```m3``` and ```m4```. In addition, you might also want to specify ```m5```. Don't also forget about changing the estimation method. 
+
+
+```{r include=FALSE, warning=FALSE, message=FALSE}
+df_dyn_L$context.ord <- as.ordered(df_dyn_L$context)
+contrasts(df_dyn_L$context.ord) <- "contr.treatment"
+```
+
+```{r}
+# model with language.ord
+m3 <- mgcv::bam(f2z ~ language.ord + s(time) + s(time, by = language.ord), data = df_dyn_L, method = "fREML")
+
+# model with both language.ord and context.ord
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "fREML")
+
+# model with context.ord
+# m5 <- ...
+
+# comparison
+# ...
+```
+
+## Significance testing
+
+We're close to building the full model! Now, let's focus on the statistical significance of the predictor variables, such as ```language.ord``` and ```context.ord```.
+
+In GAMMs, non-linear trajectories are captured through smooth terms, while parametric terms represent linear effects. The trajectories can be analyzed in terms of **height (level)** and **shape (rate of change)**, which correspond to parametric and smooth terms, respectively.
+
+Here's how to assess the significance of each term:
+
+### 1. Full Model vs. Nested Model (with Both Parametric and Smooth Terms)
+
+To determine the overall significance of a variable's effect (both on height and shape):
+
+- Compare the full model (which includes both the parametric and smooth terms for the variable of interest) with a nested model that excludes both the parametric and smooth terms associated with that variable.
+
+**Interpretation**:
+
+  - If the full model improves the fit significantly (using a likelihood ratio test or other model comparison methods), this suggests that the variable of interest affects both the trajectory height and the trajectory shape.
+    
+  - If the full model does not improve the fit significantly, this suggests that the variable of interest does not significantly affect the dependent variable (either in terms of height or shape).
+
+### 2. Full Model vs. Nested Model (with Parametric Terms Only)
+
+If the full model is found to be significantly better than the nested model in step 1, we can further investigate whether the variable affects both the height and shape of the trajectory:
+
+- Compare the full model (which includes both parametric and smooth terms for the variable) with another nested model that retains the parametric term but excludes the smooth term for the variable of interest.
+
+**Interpretation**:
+
+  - If the full model is still significantly better, this suggests that the variable has a significant effect on both the height (parametric term) and shape (smooth term) of the trajectory.
+
+  - If the full model is not significantly better, this suggests that the variable's effect is primarily on the height dimension (the parametric term) and that the shape (non-linear trajectory) is not significantly influenced by the variable.
+
+Let's see how this works for the ```language.ord``` effect: 
+
+### Comparison 1: full model vs nested model without parametric/smooth terms
+
+```{r}
+# full model
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
+
+# nested model 1 -- excluding both parametric and smooth terms
+m4_1 <- mgcv::bam(f2z ~ context.ord + s(time) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
+
+# model comparison
+compareML(m4, m4_1, suggest.report = FALSE)
+```
+
+The model comparison suggests that the full model ```m4``` significantly improves the model fit. Let's now move onto another model comparison.
+
+### Comparison 2: full model vs nested model only with parametric term
+
+```{r}
+# full model
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
+
+# nested model 2 -- including parametric term only
+m4_2 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
+
+# model comparison
+compareML(m4, m4_2, suggest.report = FALSE)
+```
+
+The full model still improves the degree of model fit. This suggests that ```language.ord``` has a statistically significant difference on both **height** and **shape** dimensions. 
+
+### Your turn
+
+How about the ```context.ord```?
+
+### Comparison 1: full model vs nested model without parametric/smooth terms
+
+```{r}
+# full model
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
+
+# nested model 1 -- excluding both parametric and smooth terms
+# m4_3 <- ...
+
+# model comparison
+# compareML(m4, m4_3, suggest.report = FALSE)
+```
+
+### Comparison 2: full model vs nested model only with parametric term
+
+Please write a code chunk if another model comparison is still necessary.
+
+```{r}
+# full model
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
+
+# nested model 2 -- including parametric term only
+# m4_4 <-
+
+# model comparison
+# compareML(m4, m4_4, suggest.report = FALSE)
+```
+
+## Random effects
+
+You might notice that we have modelled non-linear change of ```f2z``` over time with fixed effects only, and we have ignored by-speaker and by-item random effects. This is where the difference between GAM and GAMM comes in: Generalised Additive Mixed Effect Models, as the name suggests, can also incorporate random effects!
+
+There are various ways to incorporate random effects, but here, we stick to one of them, which is based on **factor smooths**. 
+
+Factor smooths fit curves for indiviaul participants (if specified for ```speaker```, ```participant``` etc) and for individual items (if specified for ```word```, ```item``` etc). You could think of this as a non-linear equivalent of random intercepts and random slopes in the linear mixed-effect models. 
+
+Let's start with accounting for the by-speaker factor smooths. In the model below, a new smooth term is added: ```s(time, speaker, bs = "fs", m = 1)```. This tells the model to fit non-linear trajectories for ```f2z``` over ```time``` for each of the ```speaker(s)```. ```bs = "fs"``` specifies factor smooths, and the final ```m = 1``` is a control parameter of the degree of wiggliness of by-speaker trajectory -- we leave it as it is.
+
+```{r}
+# full model with by-speaker random effects
+m5 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord) + s(time, speaker, bs = "fs", m = 1), data = df_dyn_L, method = "fREML")
+
+# model summary
+summary(m5)
+```
+
+Compared to the model outputs earlier, there is one extra line in the smooth term section. ```s(time,speaker)``` at the bottom indicates the smooth term to account for by-speaker variation. This shows statistical significance, meaning that this is good to be included.
+
+And this is what by-speaker factor smooths looks like:
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+itsadug::inspect_random(m5, select = 5, lwd = 3, main = "random smooths by speaker")
+```
+
+### Your turn
+
+In a similar manner to the by-speaker random effects, could you write a code of a model containing both **by-speaker** and **by-item** (operationalised here as ```word```) random effects? 
+
+```{r}
+# full model with by-speaker and by-item random effects
+# m6 <- ...
+
+# model summary
+# ...
+```
+
+Also, how do the by-item factor smooths look?
+
+```{r}
+# drawing by-item factor smooths
+# itsadug::inspect_random(m6, select = 6, lwd = 3, main = "random smooths by item")
+```
+
+## Correcting autocorrelation
+
+Looks like we're pretty much all set -- well done on getting this far! However, there is one more important aspect to consider, and we'll need to look into the assumptions under which GAMMs operate. 
+
+If you remember from the linear models, I explained that statistcal tests have assumptions that need to be met. And it concerned with **residuals**. Residuals mean the difference between observed and fitted values: in linear models, casually speaking, we should **not** expect any visible structure in the residual distributions under the normality and constant assumption. 
+
+Something similar can be said here: residuals need to be independent from each other for GAMMs models, too. In a simpler term, **the model does not know (yet) whether data points are completely independent of each other or sampled from a series of time series data**. This has an important consequence in estimation accuracy, so we need to address this. 
+
+<!-- However, when fitting time-series data, it is inevitable that each data point is dependent on each other, and this influences the residual structure. That is, the residual of a time point (say "t1") is dependent on the residual of the previous time point ("t0"), then t2 on t1, t3 on t2, and so forth.  -->
+
+
+The solution is to incorporate **AR(1) model** into your GAMMs model. Through adding **AR(1) model**, we define:
+
+1. an extra parameter ```rho``` ($\rho$)
+
+2. an extra column in the data set telling where a trajectory starts (```start.event```)
+
+Let's go through the process to build and incorporate the **AR(1)** model.
+
+### Check autocorrelation
+
+Let's check the residual structure in our full model ```m6```. This can be done via ```itsadug::acf_resid()``` function.
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+m6 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "fREML")
+```
+
+```{r}
+# showing residual autocorrelations
+itsadug::acf_resid(m6)
+```
+
+The plot shows residual autocorrelation at different **lags**. For example, the autocorrelation at lag 0 (i.e., "0" on the x-axis) shows the value of 1, and this makes sense because lag 0 shows the correlation of the residuals with themselves. The residual correlation at **Lag 1** is calculated by taking the ```f2z``` values at the time 0, 1, 2, ... and correlating them with the ```f2z``` values at time 1, 2, 3 ... . Similarly, **lag 2** is the correlation between correlations of the ```f2z``` values at the time 0, 1, 2 ... and at the time 2, 3, 4 ... . 
+
+This is somewhat complicated, but the important thing to look for in the plot is the fact that **the heights of the two vertical lines next to each other are correlated**. This suggests that residuals are correlated with each other and this is not ideal for accurate modelling estimation. 
+
+### Defining rho ($\rho$)
+
+In order to address the residual autocorrelation, we will first define a ```rho``` value. It is advisable that you explore a wide range of rho values, but a rule of thumb is to define the ```rho``` value as the autocorrelation at lag 1.
+
+```{r}
+# obtain the autocorrelation at lag 1 as a rho value
+rho_m6 <- start_value_rho(m6)
+```
+
+The autocorrelation at lag 1 is approximately 0.783, and we use this as a rho value in the model.
+
+### Defining the start of an event
+
+Another thing we need to do is to define the beginning of each trajectory. This simply marks the row in the data corresponding to ```time = 0``` as ```TRUE```. 
+
+**Note**: When doing this, make sure that your data is ordered appropriately. In our case here, the ```time``` sequence needs to be arranged from 0, 10, 20, ... 100 for each token. 
+
+```{r}
+# let's arrange the data first
+df_dyn_L <- df_dyn_L |> 
+  dplyr::arrange(
+    speaker, file, time
+  ) |> 
+  dplyr::relocate(time) # to move the time column forward
+
+# define the event onset
+df_dyn_L$start.event <- df_dyn_L$time == 0
+
+# check data
+df_dyn_L |> 
+  dplyr::select(speaker, file, time, f2z, start.event)
+```
+
+As you can see above, the data are arranged according to ```time``` within each token, and the onset of a trajectory (i.e., where ```time = 0```) is marked ```TRUE``` in the ```start.event``` column.
+
+### Fitting the full model with AR(1) model
+
+Finally, let's incorporate the residual autocorrelation correction (i.e., AR(1) model) into our model.
+
+```{r}
+# full model with AR(1) model
+m7 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "fREML", rho = rho_m6, AR.start = df_dyn_L$start.event)
+
+# model summary
+summary(m7)
+```
+
+
+Let's also check whether autocorrelation is accounted for.
+
+```{r}
+# showing residual autocorrelations
+itsadug::acf_resid(m7)
+```
+
+The autocorrelation plot shows that the autocorrelation at lag 1 (i.e., second vertical line from the left) is substantially shorter than in the previous plot. This means that the new model ```m7``` successfully recognises the dependencies between data points and thus the residual autocorrelations have been eliminated. 
+
+## Model criticism
+
+We have touched upon some assumptions just now, and it's a good practice to check whether our model satisfies those assumptions. 
+
+```{r}
+# model criticism
+mgcv::gam.check(m7)
+```
+
+The plots here look overall OK, but not ideal. The tails on both ends of the 'spaghetti-like' line in the first plot suggests that the residual distribution does not strictly follow the normal distribution: Rather, it suggests that it follows a t-distribution. The histogram also shows somewhat skewed distribution.
+
+We won't try correcting these issues in the interest of time, but existing GAMMs tutorials suggest some ways to address this. One way, for example, is to tell your GAMMs model to follow a **scaled t distribution** by adding ```family = 'scat'``` argument. But for now, let's leave it as it is. 
+
+## Final model: data visualisation
+
+We have covered quite a few things so far and we have not managed to visualise the full model. Let's do this finally.
+
+```{r}
+# full model with AR(1) model
+m7 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "fREML", rho = rho_m6, AR.start = df_dyn_L$start.event)
+
+# visualisation
+## /æ/ context
+### separate smooths
+plot_smooth(m7, view = "time", plot_all = "language.ord", cond = list(context.ord = "/æ/"))
+
+### difference smooth
+plot_diff(m7, view = "time", comp = list(language.ord = c("Japanese", "English")), cond = list(context.ord = "/æ/"), print.summary = FALSE, main = "Japanese-English difference in the /æ/ context")
+```
+### Your turn
+
+Could you write a code chunk to visualise (1) separate and (2) difference smooths between L1 English and L1 Japanese spaekers in the /i/ and /u/ contexts?
+
+```{r}
+# visualisation
+## /i/ context
+### separate smooths
+# ...
+
+### difference smooth
+# ...
+
+## /u/ context
+### separate smooths
+# ...
+
+### difference smooth
+# ...
+```
+
+
+# Interaction
+
+Finally, let's briefly think about how to model interactions between ```language``` and ```context```. Modelling interactions in GAMMs models is highly complex, and I did not try this in my publication. I still do not know how to perform significance testing via model comparison, we could at least try modelling and inspecting the model summary. 
+
+This section can also showcase as a complete analysis workflow based on things that we've covered so far. 
+
+## Creating the ```LangCont``` variable
+
+One way of modelling the categorical $\times$ categorical interaction in GAMMs is to concatenate two variables into one. This can be done via ```interaction``` function.
+
+```{r}
+# convert variables into factor
+df_dyn_L$language <- as.factor(df_dyn_L$language)
+df_dyn_L$context <- as.factor(df_dyn_L$context)
+df_dyn_L$speaker <- as.factor(df_dyn_L$speaker)
+df_dyn_L$word <- as.factor(df_dyn_L$word)
+
+# create an interaction variable
+df_dyn_L$LangCont <- interaction(df_dyn_L$language, df_dyn_L$context)
+```
+
+To quickly reiterate, ```language``` has two levels (Japanese vs English) and ```context``` has three levels (/æ/ vs /i/ vs /u/). By combining them together, ```LangCont``` can fit a trajectory for each of the six levels (i.e., two for ```language``` $\times$ three for ```context```):
+
+```{r}
+# checking the levels in the LangCont column
+df_dyn_L |> 
+  dplyr::group_by(LangCont) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+```
+
+This way, we can model the interaction while treating ```LangCont``` as just one variable in the model. 
+
+## Fitting the first model
+
+We'll stick to the random smooths approach, so let's convert ```LangCont`` into an ordered variable.
+
+```{r}
+# converting LangCont into ordered variable
+df_dyn_L$LangCont.ord <- as.ordered(df_dyn_L$LangCont)
+contrasts(df_dyn_L$LangCont.ord) <- "contr.treatment" # don't forget this!
+
+# fitting a model
+m10 <- mgcv::bam(f2z ~ LangCont.ord + s(time) + s(time, by = LangCont.ord) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "fREML")
+
+# summary
+summary(m10)
+```
+
+## Residual autocorrelation corrections
+
+We also need to build AR(1) model to account for the residual autocorrelations.
+
+```{r}
+# mark start.event
+## arrange the data appropriately
+df_dyn_L <- df_dyn_L |> 
+  dplyr::arrange(file, time)
+
+## mark time = 0
+df_dyn_L$start.event <- df_dyn_L$time == 0
+
+# check residual autocorrelations
+itsadug::acf_resid(m10)
+
+# obtain the autocorrelation at lag 1 as a rho value
+rho_m10 <- start_value_rho(m10)
+```
+
+## Fitting model again
+
+```{r}
+# fitting a model
+m11 <- mgcv::bam(f2z ~ LangCont.ord + s(time) + s(time, by = LangCont.ord) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "fREML", rho = rho_m10, AR.start = df_dyn_L$start.event)
+
+# summary
+summary(m11)
+
+# check residual autocorrelations
+itsadug::acf_resid(m11)
+```
+
+Looks like all smooth and parametric terms are quite important! Let's quickly do the model comparison for significant testing.
+
+```{r}
+# full model with ML
+m11 <- mgcv::bam(f2z ~ LangCont.ord + s(time) + s(time, by = LangCont.ord) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "ML", rho = rho_m10, AR.start = df_dyn_L$start.event)
+
+# nested model with ML
+m11_2 <- mgcv::bam(f2z ~ s(time) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "ML", rho = rho_m10, AR.start = df_dyn_L$start.event)
+
+# model comparison
+itsadug::compareML(m11, m11_2, suggest.report = TRUE)
+```
+
+The full model significantly improves the model fit. Let's further investigate whether this is to do with **shape** difference.
+
+```{r}
+# full model with ML
+m11 <- mgcv::bam(f2z ~ LangCont.ord + s(time) + s(time, by = LangCont.ord) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "ML", rho = rho_m10, AR.start = df_dyn_L$start.event)
+
+# nested model with ML 2 -- parametric term only 
+m11_3 <- mgcv::bam(f2z ~ LangCont.ord + s(time) + s(time, speaker, bs = "fs", m = 1) + s(time, word, bs = "fs", m = 1), data = df_dyn_L, method = "ML", rho = rho_m10, AR.start = df_dyn_L$start.event)
+
+# model comparison
+itsadug::compareML(m11, m11_3, suggest.report = TRUE)
+```
+
+The full model still improves the degree of model fit at the statistically significant level. This overall suggests that the interaction between ```language``` and ```context``` is statistically significant on **trajectory shape**. 
+
+## Data visualisation
+
+Instead of the plotting fucntions in ```itsadug```, here I use the ```tidygam``` package to visualise data while disentangling the ```language``` and ```context``` effects.
+
+```{r}
+# inspect gams
+m11_preds <- tidygam::predict_gam(m11, exclude_terms = c("s(time,speaker)", "s(time,word)"))
+
+# show prediction
+m11_preds
+
+# separate two main effects
+m11_preds_2 <- tidygam::predict_gam(
+  m11,
+  length_out = 25,
+  exclude_terms = c("s(time,speaker)", "s(time,word)"),
+  separate = list(LangCont.ord = c("language", "context"))
+)
+
+# get gamm prediction
+m11_preds_2 |>
+  plot(series = "time", comparison = "language") +
+  scale_colour_manual(values = cbPalette) +
+  scale_fill_manual(values = cbPalette) +
+  facet_grid(cols = vars(context))
+```
+
+
+# Summary
+
+We've covered so many things! Here is a brief summary of what has been covered today:
+
+## Static data analysis does not always highlight between-group differences accurately.
+
+As our comparison of static and dynamic data visualisation suggests, it is important to think how the data points are sampled for static analysis. It might be the case that two groups happen to be similar when two time-varying contours just cross over. 
+
+## Generalised Additive Mixed Modelling can model non-linear between-group difference over time
+
+By combining **parametric** and **smooth** terms, GAMMs can capture non-linear between-group difference in a response variable over time. We also learnt a modelling approach using **difference smooths** that can encode the between-group difference directly into the model. 
+
+## Always visualise the data!
+
+While we have tried interpretting the model summary a few times, it is still quite complex. This is why **data visualisation** is really important in non-linear modelling like GAMMs.
+
+# Wrap-up question
+
+How did you find GAMMs so far? What types of data/research questions might be suitable to be tested through GAMMs? 
+
+# References
+
+This workshop material is heavily drawn from the great existing tutorials and empirical papers. All of these provide great details in GAMMs modelling and I would highly recommend all of these if you would like to know more about GAMMs.
+
+Chuang, Y.-Y., Fon, J., Papakyritsis, I., Baayen, H., & Ball, M. J. (2021). Analyzing Phonetic Data with Generalized Additive Mixed Models. In M. Ball (Ed.), **Manual of Clinical Phonetics** (1st ed., Vol. 1, pp. 108–138). Routledge. https://doi.org/10.4324/9780429320903-10
+
+Coretta, S. (2024). Learn Generalised Additive (Mixed) Models. Online tutorial. https://stefanocoretta.github.io/learnGAM/
+
+Kirkham, S, Nance, C., Littlewood, B., Lightfoot, K., & Groarke, E. (2019). Dialect variation in formant dynamics: The acoustics of lateral and vowel sequences in Manchester and Liverpool English. *The Journal of Acoustical Society of America, 145*(2). 784–794. https://doi.org/10.1121/1.5089886
+
+Sóskuthy, M. (2017). Generalised Additive Mixed Models for dynamic analysis in linguistics: a practical introduction. arXiv:1703.05339 [stat:AP].
+
+Sóskuthy, M., Foulkes, P., Hughes, V., & Haddican, B. (2018). Changing words and sounds: the roles of different cognitive units in sound change. *Topics in Cognitive Science, 10*, 787–802.
+
+Sóskuthy, M. (2021). Evaluating generalised additive mixed modelling strategies for dynamic speech analysis. *Journal of Phonetics, 84*, 101017. https://doi.org/10.1016/j.wocn.2020.101017
+
+Steffman, J. (2022). Modeling intonational tunes with Generalized Additive Mixed Models: A practical introduction. Online tutorial. https://jsteffman.github.io/GAMM_intonation_modeling.html
+
+Wieling, M. (2018). Analyzing dynamic phonetic data using generalized additive mixed modeling: A tutorial focusing on articulatory differences between L1 and L2 speakers of English. *Journal of Phonetics, 70*, 86–116. https://doi.org/10.1016/j.wocn.2018.03.002
+
+

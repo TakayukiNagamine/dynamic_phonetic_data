@@ -1,0 +1,549 @@
+---
+title: 'Day 1 Session 2: <br> Dynamic spectral analysis <br> using Functional Principal Component Analysis (FPCA)'
+author: "Takayuki Nagamine"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+    # html_document: 
+    # toc: true
+    # toc_float: true
+    # number_sections: true
+---
+
+```{r include=FALSE}
+library(rmdformats)
+library(tidyverse)
+
+# setting the plot theme globally
+theme_set(theme_classic())
+
+# define colour-blind-friendly colour palette 
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+# Functional Principal Component Analysis (FPCA)
+
+In the previous section, we performed **principal component analysis (PCA)** on the static data -- i.e., the midpoint measurement of formant frequencies in the production of English /l/ and /ɹ/ by L1 Japanese and L1 English speakers. We have found that **F2** and **F3** seem to be the key in understanding their production judging from their contributions to PC1. 
+
+Whereas we have identified **what parameters** would characterise the between-group difference, it does not tell us much about **how** the two speaker groups differ. More specifically, we now know that **F2** and **F3** are important to understand English /l/ and /ɹ/ productions better, our ultimate aim is to know **how** L1 Japanese speakers differ from L1 English speakers in producing English /l/ and /ɹ/. Let's turn to **dynamic analysis** and explore how the two groups of speakers differ in the realisations of **F2** and **F3** over time. 
+
+We will use **Functional Principal Component Analysis (FPCA)** to explore salient dynamic properties in the data. The basic architecture is quite similar to the ordinary PCA that we have just seen with a couple of key differences as it deals with **functional** data. 
+
+
+# Preliminaries
+
+## Installing/loading packages
+
+For the dynamic analysis using FPCA, we are using ```fdapace()``` package, so let's install it here.
+
+```{r warning=FALSE, message=FALSE}
+# installing packages
+# install.packages("tidyverse")
+# install.packages("fdapace")
+
+# importing packages
+library(tidyverse)
+library(fdapace)
+```
+
+
+## Importing data set
+
+Let's import the data set. We are using the data set openly available on the Open Science Framework (OSF) repository.
+
+```{r message=FALSE}
+# import the csv file "initial.liquid.dynamic.csv" from the "data" directory and save it as "df_dyn"
+df_dyn <- readr::read_csv("data/initial.liquid.dynamic.csv")
+```
+
+# Data wrangling
+
+## Check data
+
+We always start with inspecting the data set using ```colnames()```. 
+```{r}
+# Let's check what columns the data frame contains
+colnames(df_dyn)
+```
+
+
+## Omitting irrelavent columns
+
+We'll omit the columns we don't need.
+
+```{r}
+# Let's check the number of "approximant" tokens
+df_dyn |> 
+  dplyr::group_by(IsApproximant) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Let's check the number of tokens of good recording quality
+df_dyn |> 
+  dplyr::group_by(IsAcoustic) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# How about 'omit'?
+df_dyn |> 
+  dplyr::group_by(omit) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# Remove columns that we no longer need
+df_dyn <- df_dyn |> 
+  dplyr::select(-c(IsApproximant, IsAcoustic, omit, Barkf1, Barkf2, Barkf3, Barkf2f1, Barkf3f2, f2f1, f3f2))
+```
+Let's check the column names again.
+
+```{r}
+colnames(df_dyn)
+```
+
+Let's also convert the ```context``` column into IPA symbols for a more intuitive representation:
+
+```{r}
+# convert the ARPABET notation into IPA symbols
+df_dyn <- df_dyn |> 
+  dplyr::mutate(
+    context = case_when(
+      context == "AE" ~ "/æ/",
+      context == "IY" ~ "/i/",
+      context == "UW" ~ "/u/"
+    )
+  )
+```
+
+## Checking the number of participants, tokens...
+
+Let's also obtain some descriptive statistics here. Note that we need to divide the number of rows by 11 to obtain the accurate number of tokens, as one token now has 11 time points.
+
+```{r}
+# number of participants
+df_dyn |> 
+  dplyr::group_by(language) |> 
+  dplyr::summarise(n = n_distinct(speaker)) |> 
+  dplyr::ungroup()
+
+# number of tokens per segment
+df_dyn |> 
+  dplyr::group_by(segment) |> 
+  dplyr::summarise(n = n()/11) |> # divide by 11 time points
+  dplyr::ungroup()
+```
+
+# Data visualisation
+
+## Scaling formant frequencies
+
+Do you remember how to visualise the dynamic data? The basic procedure is the same as in the static analysis; We first apply z-score normalisation to the formant frequencies to make sure that formant values are comparable across speakers. 
+
+```{r}
+df_dyn <- df_dyn |> 
+  dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
+  dplyr::mutate(
+    f1z = as.numeric(scale(f1)), # scale f1 into z-score
+    f2z = as.numeric(scale(f2)), # scale f2 into z-score
+    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+  ) |> 
+  dplyr::ungroup() # don't forget ungrouping
+```
+
+## Descriptive statistics
+
+Let's check the mean and SD for both raw and normalised formant values: just see F1 for now. Note that the mean z-scores do not seem to look zero, but this is because computers are not very good at dealing with very small numbers (e.g., decimals) and some fluctuations occur in computing the values.
+
+```{r}
+# check mean and sd of raw/scaled F1 values for each speaker
+df_dyn |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f1_mean = mean(f1),
+    f1_sd = sd(f1),
+    f1z_mean = mean(f1z),
+    f1z_sd = sd(f1z)
+  ) |> 
+  dplyr::ungroup() 
+```
+
+## Visualisation
+
+### raw trajectories
+
+Let's visualise the raw data first:
+
+```{r warning=FALSE}
+# F2 - raw trajectories
+df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "time-varying change in F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### smooths
+
+Let's also try plotting smoothed trajectories:
+
+```{r warning=FALSE}
+# F2 - smooths
+df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  # geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  # geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.2, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "smoothed time-varying change in F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+# Functional Principal Component Analysis (FPCA)
+
+At this point, we tried fitting Generalised Additive Mixed-Effect Models (GAMMs) to investigate between-group differences in F2 dynamics. This was possible because we had some ideas of possible factors (e.g., vowel context, speaker groups). In a way, lots of decisions were made in a **top-down** manner.
+
+We could also try another approach; a **bottom-up** approach. That is, does the data tell us anything about higher-order groupings? Do the vowel context/speaker group differences emerge from the data? 
+
+Here, let's try **Functional Principal Component Analysis (FPCA)** as a bottom-up approach. 
+
+```{r}
+# IDs = token column; tVec = time column; yVec = variable column(s)
+input_df <- fdapace::MakeFPCAInputs(IDs = df_dyn$file, tVec = df_dyn$time, yVec = df_dyn$f2z)
+
+# Check if there's any issues with the data
+fdapace::CheckData(input_df$Ly, input_df$Lt)
+
+# No errors have been returned, so let's now run fPCA on the dynamic PC1 trajectory
+df_dyn_fpca <- fdapace::FPCA(Ly = input_df$Ly, input_df$Lt, optns = list(plot = TRUE))
+```
+
+## Checking fpca results
+
+Let's look into the results here. ```summary(df_dyn_fpca)``` tells you what attributes are stored in the FPCA data:
+
+```{r}
+summary(df_dyn_fpca)
+```
+
+Eigenvalues are stored in ```lambda```. Similarly in the ordinary PCA, this shows how much variance is explained by each FPCA. This case, FPC1 explains quite a lot of variance in the data, so we might only need to look at FPC1 to understand an overall trend in the F2 dynamics. 
+
+```{r}
+# eigenvalues
+df_dyn_fpca$lambda
+```
+
+The cumulative proportion of variance is stored in ```cumFVE```. 
+
+```{r}
+# the cumulative percentage of variance explained by the eigenvalue
+df_dyn_fpca$cumFVE
+
+
+```
+
+And as we did for the oridinary PCA, we can calculate ```cumFVE``` using eigenvalues (```lambda```). This manual approach differs slightly from the output shown with ```df_dyn_fpca$cumFVE``` reflecting slightly different calculation approaches, but you can see that the overall trend is still quite similar. 
+
+```{r}
+# calculating proportion of variance from eigenvalues
+fpca_var_exp <- df_dyn_fpca$lambda / sum(df_dyn_fpca$lambda)
+
+# compare this with cumFVE
+fpca_var_exp
+
+df_dyn_fpca$cumFVE
+```
+
+The dynamic analysis introduces the **time** dimension. ```df_dyn_fpca$workGrid``` gives you the time points at which data are sampled.
+
+```{r}
+# list of sampling time
+df_dyn_fpca$workGrid
+```
+
+PC scores are stored in ```df_dyn_fpca$xiEst```. Each row is 1 token, and each column corresponds to each FPC dimension.
+
+```{r}
+# PC scores 
+head(df_dyn_fpca$xiEst)
+```
+
+Finally, you can get a mean curve directly by applying ```GetMeanCurve``` and a scree plot with ```CreateScreePlot``` in the ```fdapace``` package. ```CreatePathPlot``` returns a plot showing individual trajectories. 
+
+```{r}
+# plot
+plot(df_dyn_fpca)
+
+# Mean curve
+fdapace::GetMeanCurve(Ly = input_df$Ly, Lt = input_df$Lt, optns = list(plot = TRUE))
+
+# scree plot
+fdapace::CreateScreePlot(df_dyn_fpca)
+
+# path plot
+fdapace::CreatePathPlot(df_dyn_fpca, xlab = "normalised time", ylab = "F2 (z-normalised)")
+```
+
+## Understanding variation captured by FPCs
+
+We have seen that our FPCA analysis identifies that FPC1 captures the majority of variation observed in the data. Let's check the details of this. The code below is from Strycharczuk et al. (2024) -- see the file "diphthongisation_paper.html" stored in the repository. 
+
+The code below lets you visualise what variation is captured in FPC1 by adding and subtracting standard deviation to/from the mean curve.
+
+```{r}
+# function: get PC scores + return data frame with PCs for each token
+get_pc_scores <- function(fpcaObj){
+  pcs <- data.frame(fpcaObj$xiEst)
+  token <- names(fpcaObj$inputData$Lt) 
+  df <- cbind(token, pcs)
+  n_pcs <- length(fpcaObj$lambda) # get number of PCs
+  pc_names <- paste0("PC", 1:n_pcs) # create colnames for PCs
+  names(df) <- c("file", pc_names) # add colnames for token + PCs
+  return(df)
+}
+
+# get PC scores w/ token info
+pc_df <- get_pc_scores(df_dyn_fpca)
+
+# join PCs (dat) with selected cols from original data frame 
+## store meta info
+meta <- df_dyn |>  
+  select(speaker, gender, language, word, liquid, context, file)
+
+## merge the list and meta data - unique(meta) because otherwise there would be lots of duplicates
+dat <- left_join(pc_df, unique(meta), by = "file")
+
+# function: define perturbation function (±Q = ±sd, k = PC number)
+perturbation <- function(fpcaObj, Q, k){
+  Q * sqrt(fpcaObj$lambda[k]) * fpcaObj$phi[,k] + fpcaObj$mu
+}
+
+# function: create perturbation object with mean and ±Q sd as a data frame (for one PC only)
+# can validate against fdapace::GetMeanCurve and fdapace::CreateModeOfVarPlot
+perturbation_object <- function(fpcaObj, Q, k){
+  time <- fpcaObj$workGrid # grid of time values
+  mean <- fpcaObj$mu # mean trajectory
+  Qplus <- perturbation(fpcaObj, Q, k) # +Q sd
+  Qminus <- perturbation(fpcaObj, -Q, k) # -Q sd
+  df <- cbind(time, mean, Qplus, Qminus)
+  colnames(df) <- c("time", "mean", "Qplus", "Qminus")
+  df <- data.frame(df)
+  df$PC <- paste0("PC", k) # add PC colname
+  return(df)
+}
+
+# function: create perturbation data frame with mean and ±Q sd (for all PCs)
+# to do: add ability to pass list of Q values for gradient perturbation function
+get_perturbation <- function(fpcaObj, Q){
+  n_pcs <- length(fpcaObj$lambda)
+  k <- 1:n_pcs
+  df <- lapply(k, perturbation_object, fpcaObj=fpcaObj, Q=Q)
+  df <- dplyr::bind_rows(df) # unnest lists into single df
+  return(df)
+}
+
+# get mean trajectory and ±2 sd for all PCs
+Q <- seq(from = -2, to = 2, by = 0.1)
+pQ <- lapply(Q, get_perturbation, fpcaObj = df_dyn_fpca)
+names(pQ) <- Q # name pQ lists using value of Q
+pQ <- dplyr::bind_rows(pQ, .id = "Q") # collapse lists together
+pQ$Q <- as.numeric(pQ$Q) # make 'Q' column numeric
+
+# visualise variation along each FPC
+pQ |> 
+  dplyr::filter(PC %in% c('PC1','PC2', 'PC3', 'PC4')) |> 
+  dplyr::mutate(
+    PC = case_when(
+      PC == "PC1" ~ "FPC1",
+      PC == "PC2" ~ "FPC2",
+      PC == "PC3" ~ "FPC3",
+      PC == "PC4" ~ "FPC4"
+    )
+  ) |> 
+  tidyr::pivot_longer(Qplus:Qminus, names_to = "Qsd", values_to = "value") |>
+  ggplot2::ggplot() +
+  aes(x = time, y = value, colour = Q, group = interaction(Q, Qsd)) +
+  geom_path() +
+  facet_wrap(~ PC, ncol = 2) +
+  scale_colour_gradient2(low = "#E69F00", mid = "#56B4E9", high = "#009E73", midpoint = 0)+
+  labs(x = "Time (normalised)", y = "Reconstructed F2 values", color = "PC score")
+```
+
+Remember that FPC1 explains 79.23% of the variance in the data. FPC1 shows that the variation is larger towards the end of the interval, which seems to suggest that FPC1 captures the difference in the shape and height of F2 trajectories depending on the vowel context. FPC2, on the other hand, shows a greater variation closer to the onset of the interval, which might correspond to the difference between English /l/ and /ɹ/.
+
+## Reconstructing F2 trajectories based on FPCs
+
+We can reconstruct the F2 trajectories using the information captured by each FPC to better understand the dimension captured by FPC1.
+
+### working out necessary parameters
+
+Let's first work out parameters required for reconstructing the original PC1 trajectories. This includes: (1) mean curve, (2) time points used to fit FPCA, (3) eigenfunction associated with each time point and (4) PC loadings for each PC. These are stored in the ```fdapace::FDA``` object that we obtained from the FPCA analysis earlier. The following code computes eigenfunctions manually.
+
+```{r}
+# mean fPC1 trajectory
+# pc1_mean_curve <- fdapace::GetMeanCurve(Ly = input.PC1$Ly, Lt = input.PC1$Lt, optns = list(plot = TRUE))
+mu_values <- data.frame(df_dyn_fpca$mu) # mean curve values
+mu_time <- data.frame(df_dyn_fpca$workGrid) # timepoints used for estimating the curve
+phi <- data.frame(df_dyn_fpca$phi) # eigenfunction at each timepoint: workGrid * nlambda (e.g., 255 = 51 workGrid * 5 lambda)
+lambda <- data.frame(df_dyn_fpca$lambda) # PC loadings for each PC: currently 5
+
+# create a data frame containing mean curve, time and eigenfunctions assocaited with each PC at each time point
+## add an extra column 'col_number' as a common index across the data frames - useful when merging everything together later on
+### mean curve
+mu_values <- mu_values |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### sampling time points
+mu_time <- mu_time |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### eigenfunction
+phi <- phi |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### pc loadings
+lambda <- lambda |>  
+  dplyr::mutate(
+    PC = str_c("PC", row_number()),
+    PC = str_c(PC, "lambda", sep = "_")
+  ) |>  
+  tidyr::pivot_wider(names_from = "PC", values_from = "df_dyn_fpca.lambda") |>  
+  dplyr::slice(rep(1:n(), each = 51)) |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+  
+## merging all data together one by one
+rec <- dplyr::left_join(mu_values, mu_time, by = "col_number")
+rec <- dplyr::left_join(rec, phi, by = "col_number")
+rec <- dplyr::left_join(rec, lambda, by = "col_number")
+
+## tidying up some column names
+rec <- rec |>  
+  dplyr::select(col_number, df_dyn_fpca.workGrid, df_dyn_fpca.mu, X1, X2, X3, X4, PC1_lambda, PC2_lambda, PC3_lambda, PC4_lambda) |>  
+  dplyr::rename(
+    mean = df_dyn_fpca.mu,
+    time = df_dyn_fpca.workGrid,
+    PC1_eigen = X1,
+    PC2_eigen = X2,
+    PC3_eigen = X3,
+    PC4_eigen = X4
+  )
+
+## plotting the eigenfunctions - this should match with a sub-plot in bottom right created with plot(PC1)
+rec |>  
+  ggplot() +
+  # geom_path(aes(x = time, y = mean)) +
+  geom_path(aes(x = time, y = PC1_eigen), colour = "black", linewidth = 1.5) +
+  geom_path(aes(x = time, y = PC2_eigen), colour = "red", linetype = 2, linewidth = 1.5) +
+  geom_path(aes(x = time, y = PC3_eigen), colour = "darkgreen", linetype = 3, linewidth = 1.5) +
+  # geom_path(aes(x = time, y = value, colour = pc)) +
+  geom_hline(yintercept = 0) +
+  labs(x = "time", y = "eigenfunctions", title = "First 3 eigenfunctions")
+
+## check if this matches plot(PC1)
+plot(df_dyn_fpca)
+```
+
+Let's now merge the FPCA parameters with the meta data.
+
+```{r}
+# PC scores -> each row is 1 token, each column is one PC
+head(df_dyn_fpca$xiEst)
+
+# PC scores have already been added to the main data set
+head(dat)
+
+# duplicate each row by 51 times 
+dat_time <- dat |> 
+  dplyr::slice(rep(1:n(), each = 51))
+
+# add col_names to merge with the other data frame
+dat_time <- dat_time |>  
+  dplyr::group_by(file) |>  
+  dplyr::mutate(
+    col_number = row_number()
+  ) |>  
+  ungroup()
+
+# merge
+dat_time <- left_join(dat_time, rec, by = "col_number")
+```
+
+### Reconstructed individual F2 trajectories based on FPC1
+
+Finally, here is the reconstructed F2 trajectories based on FPC scores for FPC1.
+
+```{r}
+# reconstruct individual trajectory tokens
+dat_time <- dat_time |>  
+  dplyr::mutate(
+    PC1_reconstruct = PC1 * PC1_eigen + mean,
+    PC2_reconstruct = PC2 * PC2_eigen + mean,
+    PC3_reconstruct = PC3 * PC3_eigen + mean,
+    PC4_reconstruct = PC4 * PC4_eigen + mean
+  )
+
+# visualise FPC1
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = PC1_reconstruct, group = file, colour = context), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "F2", title = "Reconstructed F2 from FPC1") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_grid(liquid ~ language)
+```
+
+It is indeed true that FPC1 seems to capture variation associated with vowel context. The visualisation suggests that L1 English speakers have a smaller variation especially for English /ɹ/. It is also quite evident that L1 Japanese speakers do not seem to differentiate F2 trajectories between /æ/ and /u/, which is rather surprising. 
+
+### Reconstructed individual F2 trajectories based on FPC2
+
+What does F2 trajectory looks like when reconstructed from FPC2?
+
+```{r}
+# visualise FPC2
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = PC2_reconstruct, group = file, colour = context), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "F2", title = "Reconstructed F2 from FPC2") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_grid(liquid ~ language)
+```
+
+OK, so there's something interesting here: we speculated earlier that FPC2 may be capturing the difference between English /l/ and /ɹ/, but it doesn't seem to be the case. Rather, FPC2 seems to capture **the degree of vocalic anticipatory coarticulation** that can be observed during the liquid interval. 
+
+### Reconstructed individual F2 trajectories based on FPC1+FPC2
+
+Finally, it is also possible to account for a joint contribution of FPC1 and FPC2 by summing the values together:
+
+```{r}
+# reconstruct individual trajectory tokens
+dat_time <- dat_time |>  
+  dplyr::mutate(
+    joint_PC1_PC2 = (PC1 * PC1_eigen) + (PC2 * PC2_eigen) + mean
+  )
+
+# visualise FPC1+FPC2
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = joint_PC1_PC2, group = file, colour = context), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "F2", title = "Reconstructed F2 from FPC1+FPC2") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_grid(liquid ~ language)
+```
+
