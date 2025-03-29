@@ -1,0 +1,518 @@
+---
+title: 'Day 3: <br> Dynamic analysis of <br> ultrasound tongue imaging data'
+author: "Takayuki Nagamine"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+    # html_document: 
+    # toc: true
+    # toc_float: true
+    # number_sections: true
+---
+
+```{r include=FALSE}
+library(rmdformats)
+library(tidyverse)
+
+# setting the plot theme globally
+theme_set(theme_classic())
+
+# define colour-blind-friendly colour palette 
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+"#D55E00", "#CC79A7")
+```
+
+# Preliminaries
+
+## Loading data
+
+The tongue spline data were exported from the AAA software and stored in the **spline** folder. The following code looks through the spline folder, read each .txt and append it to the earlier ones. 
+
+```{r}
+## loading data
+# define the path
+dir <- getwd()
+
+# index wav files in the directory
+file_list <- list.files(paste0(dir, "/ultrasound/spline"), pattern = ".txt", full.names = FALSE)
+
+# create an empty list to store data
+data_list <- list()
+
+for(i in 1:length(file_list)){
+  current_data <- read.delim(paste0(dir, "/ultrasound/spline/", file_list[i]), header = FALSE)
+  
+  data_list[[i]] <- current_data
+}
+
+# bind all data from the list into a data frame
+dat <- bind_rows(data_list)
+
+# omit na
+dat <- na.omit(dat)
+```
+
+## Renaming columns
+
+Let's rename the column names. The code here assumes that you have exported the following variables:
+
+- Client name (Surname, First name, full name - whichever you prefer)
+- Date and time of recording (not time within recording)
+- Prompt
+- Label (usually made on Praat TextGrid and then imported to AAA)
+- X, Y values of spline DLC_Tongue (not *Tongue* - this is for XY values derived from older tongue surface tracking methods)
+
+Also, it is assumed that you have exported tongue shape at 11 equidistant points throughout the interval.
+
+The DeepLabCut plug-in on AAA tracks midsagittal tongue splines based on 11 points along the tongue surface. This means that we will obtain 22 values - X/Y for point 1, X/Y for point 2, and so on. The code below specifies this with Point 1 at the vallecula (i.e., a little ‘valley’ formed by the roots of the tongue and the epiglottis) and moving forward as the number increases until Point No. 11 = tongue tip. For further information about the tracking points, please refer to the following paper:
+
+Wrench, A., & Balch-Tomes, J. (2022). Beyond the Edge: Markerless Pose Estimation of Speech Articulators from Ultrasound and Camera Images Using DeepLabCut. *Sensors, 22*(3), Article 3. https://doi.org/10.3390/s22031133
+
+```{r}
+dat <- dat |> 
+  janitor::remove_empty(which = "cols") |>  # remove empty columns
+  dplyr::rename(
+    speaker = V1, # speaker ID
+    rec_date = V2, # date/time associated with each recording
+    prompt = V3, # alias of prompt and repetition
+    interval = V4 # textgrid label
+    ) |> 
+  dplyr::rename(
+    X_1 = V5, # vallecula
+    Y_1 = V6,
+    X_2 = V7, # tongue root 1
+    Y_2 = V8,
+    X_3 = V9, # tongue root 2
+    Y_3 = V10,
+    X_4 = V11, # tongue body 1
+    Y_4 = V12,
+    X_5 = V13, # tongue body 2
+    Y_5 = V14,
+    X_6 = V15, # tongue dorsum 1
+    Y_6 = V16,
+    X_7 = V17, # tongue dorsum 2
+    Y_7 = V18,
+    X_8 = V19, # tongue blade 1
+    Y_8 = V20,
+    X_9 = V21, # tongue blade 2
+    Y_9 = V22,
+    X_10 = V23, # tongue tip 1
+    Y_10 = V24,
+    X_11 = V25, # tongue tip 2
+    Y_11 = V26
+  )
+
+# eliminate one token that was not labelled properly
+dat <- dat |> 
+  filter(!str_detect(rec_date, "2022/11/29 17:48:39")
+  )
+
+dat$rec_date <- lubridate::parse_date_time(dat$rec_date, c("Ymd HMS","dmY HM"))
+
+# Specifying which time point of 11 each tongue spline is associated with. 
+dat <- dat |> 
+  group_by(rec_date, speaker) |> 
+  mutate(prop_time = row_number() - 1) |>  # so that first row = 0
+  ungroup() |> 
+  mutate(prop_time = prop_time * 10) |>  # to give percentages
+  mutate(prop_time = factor(prop_time)) |> 
+  mutate(perc_time = paste(prop_time, "%", sep = "") |>  factor())
+
+# Rename the prompt '18' into 'biribiri' as AAA wasn't able to handle the Japanese characters.
+dat$prompt[dat$prompt == "18"] <- "biribiri"
+
+# check data
+dat
+```
+
+## Coverting into long format
+
+Long format is easier to handle with tidyverse, so let's convert the data set here.
+
+```{r}
+## pivot longer: Use this when you work on the tongue only
+dat_long <- dat |> 
+  pivot_longer(5:26, names_to = c(".value", "point_number"), names_sep = "_")
+
+# check 
+dat_long
+```
+
+## Adding repetition
+
+It is often the case that we have participants say each prompt multiple times. Personally, I find it easier to manage data using repetition when I need to omit some errorneous tokens - I usually make notes on when each participant makes an error while recording and filter them out later.
+
+Although AAA does not export information on repetition (as far as I know), we can easily add repetition based on the date/time of recording.
+
+```{r}
+## 1. Getting R to recognise dates and time with the lubridate package
+dat_long$rec_date <- lubridate::parse_date_time(dat_long$rec_date, c("Ymd HMS","dmY HM"))
+# multiple formats are specified here because some rec_dates look weird when exported from AAA
+
+## 2. create a summary of the data using summarise(), add repetition information (as it's easier) and store it in the object 'rep' 
+rep <- dat_long |> 
+  dplyr::group_by(speaker, prompt, rec_date) |> 
+  dplyr::summarise() |> 
+  dplyr::mutate(
+    repetition = row_number()
+  ) |> 
+  ungroup()
+
+
+## 3. merge 'rep' with the main data ('df.long' here) using 'left_join()'
+dat_long <- dplyr::left_join(dat_long, rep, by = c("speaker", "prompt", "rec_date"))
+```
+
+Repetition is indeed useful here, as all recordings from the first attempt for the speaker ``2d57ke’’ need to be eliminated; I refit the probe and ultrasound headset to improve the quality of tongue imaging. When you move probe, you need to redo bite plane measurement because it changes the probe angle. So, let’s remove recordings from the speaker 2d57ke’s first attempt.
+
+```{r}
+dat_long <- dat_long |> 
+  filter(!speaker == "2d57ke" | !repetition == "1")
+```
+
+## Creating tongue spline ID
+
+In addition, although rec_date can act as a unique identifier for each token, I don’t particularly find it efficient to continue to use this for reasons mentioned above. I usually create something called ```token ID``` by combining speaker, prompt and repetition.
+
+In addition, when plotting tongue spline, you will need some grouping but this can sometimes be quite tedious. I find it useful to define a unique id for each tongue spline (i.e., a set of 22 data points - 11 points for each XY). Later on, you can group data by this ```spline ID``` to avoid ggplot from misunderstanding data structure. I combine ```token_id``` and ```proportion_time```.
+
+```{r}
+dat_long <- dat_long |> 
+  dplyr::mutate(
+    token_id = paste(speaker, prompt, sep = "_"),
+    token_id = paste(token_id, repetition, sep = "_")
+  )
+
+### a combination of "rec_date" and "prop_time" gives unique label for each spline
+dat_long <- dat_long |> 
+  dplyr::mutate(
+    spline_id = str_c(dat_long$token_id, dat_long$prop_time, sep = "_")
+  )
+```
+
+## Z-score normalisation
+
+Finally, let's scale each participant's tongue onto the z-score scale.
+
+```{r}
+## Z score normalisation of X Y coordinates
+dat_long <- dat_long |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::mutate(
+    X_z = as.numeric(scale(X)),
+    Y_z = as.numeric(scale(Y))
+  ) |> 
+  dplyr::ungroup()
+```
+
+# Data visualisation: tongue shape
+
+The following code produces Figure 3 on my ICPhS paper.
+
+```{r fig.width=10, fig.height=10}
+# Converting the speaker ID into more straightforward naming convention
+dat_long_plot <- dat_long |> 
+  dplyr::filter(speaker %in% c("jcy8xi", "3bcpyh", "kjn9n4")) 
+
+dat_long_plot$speaker[dat_long_plot$speaker == "jcy8xi"] <- "English A"
+dat_long_plot$speaker[dat_long_plot$speaker == "3bcpyh"] <- "Japanese A"
+dat_long_plot$speaker[dat_long_plot$speaker == "kjn9n4"] <- "Japanese B"
+
+# Plotting the tongue splines
+tongue_plot <- dat_long_plot |> 
+  na.omit() |> 
+  dplyr::group_by(speaker) |> 
+  ggplot2::ggplot() +
+  geom_path(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time)), linewidth = 1, show.legend = TRUE) +
+  geom_hline(yintercept = 0, linetype = 3) +
+  theme_classic() +
+  scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
+  facet_grid(factor(speaker, levels = c("English A", "Japanese A", "Japanese B")) ~ prompt) +
+  labs(x = "X", y = "Y", color='Proportional time (%)') +
+  theme(plot.title = element_text(size = 20, hjust = 0.5, face = 'bold'),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 15),
+        strip.text.x = element_text(size = 20),
+        strip.text.y = element_text(size = 20),
+        legend.text = element_text(size = 15),
+        legend.position = "bottom",
+        legend.title = element_text(size = 15, hjust = 0.5),
+        legend.key.width = unit(2, "cm")
+  )
+
+# Showing the plot
+tongue_plot
+```
+
+# Tracking dynamic PC
+
+## Data Wrangling
+
+```{r}
+# Omit NA before saving
+dat <- na.omit(dat)
+```
+
+## Principal Component Analysis
+
+```{r}
+# perform PCA
+pca_results <- prcomp(dplyr::select(dat, 5:26), scale = FALSE)
+
+# summary
+summary(pca_results)
+```
+
+## Understanding data
+
+### Scree plot
+
+```{r}
+# Plotting the variance explained (optional)
+var_explained <- pca_results$sdev^2 / sum(pca_results$sdev^2)
+
+# making var_explained as a tibble and add colname
+var_explained <- as_tibble(var_explained)
+
+var_explained <- var_explained |> 
+  as_tibble() |> 
+  mutate(
+    PC = row_number()
+  )
+
+var_explained <- var_explained |> 
+  filter(PC < 11) # only plot PC10 or below 
+
+scree <- var_explained |> 
+  ggplot(mapping = aes(x = PC, y = value)) +
+  geom_line() +
+  geom_point(data = subset(var_explained)) +
+  geom_text(data = subset(var_explained, PC < 4), aes(label = round(value, digits = 5)), nudge_x = 0.8) +
+  geom_label(data = subset(var_explained, PC < 4), aes(label = PC), label.padding = unit(0.40, "lines")) +
+  geom_hline(yintercept = 0.05, linetype = 'dotted') +
+  xlab("Principal Component") +
+  ylab("Variance Explained") +
+  ggtitle("Proportion of Variance explained by each PC") +
+  ylim(0, 0.6)
+
+scree
+```
+
+
+# Projecting PCs back onto midsagittal tongue shape
+
+## Extracting PC scores
+
+```{r}
+# Get the results of the PCA which are useful
+pc_score <- pca_results$x
+
+# Put it into a sensible format as some variables come out weird
+pc_score <- as_tibble(pc_score) |> 
+  dplyr::select(1:4)
+
+# Combine with non-numeric information from earlier
+dat_pc <- cbind(dat, pc_score)
+
+# normalise PCs by speaker for comparison
+pca_result <- dat_pc |> 
+  dplyr::group_by(speaker) |>  
+  dplyr::mutate(
+    PC1z = scale(PC1),
+    PC2z = scale(PC2),
+    PC3z = scale(PC3),
+    PC4z = scale(PC4)
+  ) |> 
+  dplyr::ungroup()
+```
+
+
+## Reconstruction
+
+```{r}
+# Mean values from the output of the PCA
+pca_mean <- tibble::enframe(pca_results$center)
+
+## subset data to make into a matrix of x and y values
+pca_mean <- pca_mean |> 
+  dplyr::mutate(
+    axis_mean = str_sub(name, start = 1, end = 1),
+    number_mean = str_sub(name, start = 3, end = -1)
+  ) |> 
+  dplyr::select(-name) |> 
+  dplyr::relocate(axis_mean, number_mean)
+
+mean_X <- pca_mean |> 
+  dplyr::filter(axis_mean == "X") |> 
+  dplyr::rename(mean_X = value,
+                axis_mean_X = axis_mean,
+                number_mean_X = number_mean)
+
+mean_Y <- pca_mean |> 
+  dplyr::filter(axis_mean == "Y") |> 
+  dplyr::rename(mean_Y = value,
+                axis_mean_Y = axis_mean,
+                number_mean_Y = number_mean)
+
+mean_pca <- cbind(mean_X, mean_Y)
+
+## get loadings - eigenvectors
+loadings <- as.table(pca_results$rotation)
+```
+
+## Loadings
+
+### PC1
+
+```{r}
+## get loadings for PC1 in a sensible format
+PC1_loadings <- as.data.frame(loadings) |> 
+  dplyr::filter(Var2 == "PC1")
+
+PC1_loadings <- PC1_loadings |> 
+  dplyr::mutate(
+    axis_loadings = str_sub(Var1, start = 1, end = 1),
+    number_loadings = str_sub(Var1, start = 3, end = -1)
+  )
+
+PC1_loadings_X <- PC1_loadings |> 
+  dplyr::filter(axis_loadings == "X") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  dplyr::rename(PC1_loadings_X = Freq,
+                axis_loadings_X = axis_loadings,
+                number_loadings_X = number_loadings)
+
+PC1_loadings_Y <- PC1_loadings |> 
+  dplyr::filter(axis_loadings == "Y") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  dplyr::rename(PC1_loadings_Y = Freq,
+                axis_loadings_Y = axis_loadings,
+                number_loadings_Y = number_loadings)
+
+PC1_loadings <- cbind(PC1_loadings_X, PC1_loadings_Y)
+```
+
+### PC2
+
+```{r}
+## get loadings for PC2 in a sensible format
+PC2_loadings <- as.data.frame(loadings) |> 
+  dplyr::filter(Var2 == "PC2")
+
+PC2_loadings <- PC2_loadings |> 
+  dplyr::mutate(
+    axis_loadings = str_sub(Var1, start = 1, end = 1),
+    number_loadings = str_sub(Var1, start = 3, end = -1)
+  )
+
+PC2_loadings_X <- PC2_loadings |> 
+  dplyr::filter(axis_loadings == "X") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  dplyr::rename(PC2_loadings_X = Freq,
+                axis_loadings_X = axis_loadings,
+                number_loadings_X = number_loadings)
+
+PC2_loadings_Y <- PC2_loadings |> 
+  dplyr::filter(axis_loadings == "Y") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  dplyr::rename(PC2_loadings_Y = Freq,
+                axis_loadings_Y = axis_loadings,
+                number_loadings_Y = number_loadings)
+
+PC2_loadings <- cbind(PC2_loadings_X, PC2_loadings_Y)
+```
+
+## Data visualisation
+
+```{r  fig.width=10, fig.height=5}
+# get sds of first 3 PCs
+sd <- tibble::enframe(pca_results$sdev)
+sd_PC1 <- as.numeric(sd[1,2])
+sd_PC2 <- as.numeric(sd[2,2])
+
+# calculate estimated values including sd
+## PC1
+estimate_PC1 <- cbind(mean_pca, PC1_loadings)
+estimate_PC1$PC1_max_X <- estimate_PC1$mean_X + sd_PC1*estimate_PC1$PC1_loadings_X
+estimate_PC1$PC1_min_X <- estimate_PC1$mean_X - sd_PC1*estimate_PC1$PC1_loadings_X
+estimate_PC1$PC1_max_Y <- estimate_PC1$mean_Y + sd_PC1*estimate_PC1$PC1_loadings_Y
+estimate_PC1$PC1_min_Y <- estimate_PC1$mean_Y - sd_PC1*estimate_PC1$PC1_loadings_Y
+
+# calculate estimated values including sd
+## PC2
+estimate_PC2 <- cbind(mean_pca, PC2_loadings)
+estimate_PC2$PC2_max_X <- estimate_PC2$mean_X + sd_PC2*estimate_PC2$PC2_loadings_X
+estimate_PC2$PC2_min_X <- estimate_PC2$mean_X - sd_PC2*estimate_PC2$PC2_loadings_X
+estimate_PC2$PC2_max_Y <- estimate_PC2$mean_Y + sd_PC2*estimate_PC2$PC2_loadings_Y
+estimate_PC2$PC2_min_Y <- estimate_PC2$mean_Y - sd_PC2*estimate_PC2$PC2_loadings_Y
+
+# Make figures ------------------------------------------------------------
+# PC1
+PC1_reconstructed <- ggplot() +
+  geom_line(data = estimate_PC1, aes(x = mean_X, y = mean_Y), size = 1.5) +
+  geom_line(data = estimate_PC1, aes(x = PC1_max_X, y = PC1_max_Y), size = 1, linetype = "dashed") +
+  geom_line(data = estimate_PC1, aes(x = PC1_min_X, y = PC1_min_Y), size = 1, linetype = "dotted") +
+  labs(x = "X", y = "Y", title = "PC1")
+
+# PC2
+PC2_reconstructed <- ggplot() +
+  geom_line(data = estimate_PC2, aes(x = mean_X, y = mean_Y), size = 1.5) +
+  geom_line(data = estimate_PC2, aes(x = PC2_max_X, y = PC2_max_Y), size = 1, linetype = "dashed") +
+  geom_line(data = estimate_PC2, aes(x = PC2_min_X, y = PC2_min_Y), size = 1, linetype = "dotted") +
+  labs(x = "X", y = "Y", title = "PC2")
+
+# showing plots
+ggpubr::ggarrange(PC1_reconstructed, PC2_reconstructed, nrow = 1)
+```
+
+# Dynamic changes in PC scores
+
+```{r}
+pca_result_long <- pca_result |> 
+  tidyr::pivot_longer(5:26, names_to = c(".value", "point_number"), names_sep = "_") |> 
+  dplyr::mutate(
+    rec_date = lubridate::parse_date_time(rec_date, c("Ymd HMS","dmY HM"))
+  )
+
+dat_long <- dplyr::left_join(dat_long, pca_result_long, by = c("speaker", "rec_date", "prompt", "interval", "prop_time", "perc_time", "point_number", "X", "Y"))
+
+dat_long <- dat_long |> 
+  dplyr::mutate(
+    L1 = case_when(
+      speaker %in% c("4ps8zx", "5jzj2h", "5upwe3", "6p63jy", "cu2jce", "ds6umh", "h5s4x3", "jcy8xi", "m46dhf", "tay55n", "we8z58", "xub9bc") ~ "English",
+      TRUE ~ "Japanese"
+    )
+  )
+
+# PC1
+dat_long |> 
+  ggplot(aes(x = prop_time, y = PC1z)) +
+  geom_line(aes(group = token_id, colour = prompt), alpha = 0.4) +
+  geom_smooth(aes(group = prompt), colour = "white", linewidth = 3.0, alpha = 0.4) +
+  geom_smooth(aes(group = prompt, colour = prompt), linewidth = 1.5, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1, alpha = 0.4) +
+  scale_colour_manual(values = cbPalette) +
+  labs(x = "Proportional time (%)", y = "PC1 (z-normalised)", title = "Dynamic changes in PC1") +
+  facet_wrap(~ L1)
+
+# PC2
+dat_long |> 
+  ggplot(aes(x = prop_time, y = PC2z)) +
+  geom_line(aes(group = token_id, colour = prompt), alpha = 0.4) +
+  geom_smooth(aes(group = prompt), colour = "white", linewidth = 3.0, alpha = 0.4) +
+  geom_smooth(aes(group = prompt, colour = prompt), linewidth = 1.5, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1, alpha = 0.4) +
+  scale_colour_manual(values = cbPalette) +
+  labs(x = "Proportional time (%)", y = "PC2 (z-normalised)", title = "Dynamic changes in PC2") +
+  facet_wrap(~ L1)
+```
+
+# Statistical analysis
+
+## FPCA
+
+## GAMMs
