@@ -713,10 +713,12 @@ OK, then how about ```duration```? Let's visualise them first, and then check ho
 ```{r}
 # convert duration (s) into (ms)
 df_mid <- df_mid |> 
+  dplyr::group_by(speaker) |> 
   dplyr::mutate(
     duration_ms = duration * 1000,
     duration_ms_z = scale(duration_ms)
-  )
+  ) |> 
+  dplyr::ungroup()
 
 # plot
 df_mid |> 
@@ -835,7 +837,7 @@ df_mid <- df_mid |>
 colnames(df_mid)
 
 # PCA on F1z, F2z, F3z and duration
-pca_mid <- prcomp(select(df_mid, 1:4))
+pca_mid <- prcomp(dplyr::select(df_mid, 1:4))
 
 # check summary
 summary(pca_mid)
@@ -1047,9 +1049,7 @@ scores_df |>
 
 We get lots of numbers here -- please do feel free to take a moment to digest these. But we could also visualise them to better facilitate the interpretation. 
 
-## Visualising PCs
-
-### PC1
+## Visualising PC1
 
 Let's visualise PC scores to see if our assumptions about each PC is correct. We think that PC1 captures covariation of ```f2z``` and ```f3z```, and this should correspond to the contrast between English /l/ (lower F2, higher F3) and /ɹ/ (higher F2, lower F3). 
 
@@ -1087,11 +1087,11 @@ scores_df |>
 
 We can see some patterns here: e.g., both L1 English and L1 Japanese speakers are similar for /l/, L1 Japanese speakers produce smaller PC1 scores in the /u/ context than L1 English speakers. Some between-group differences can be found for English /ɹ/ as well. 
 
+## Visualising PC2
+
 ### Your turn
 
 In a similar manner to PC1, please visualise PC2, PC3 and PC4. Please try different visualisation methods to explore what each PC dimension highlights. 
-
-### PC2
 
 PC2 mainly captured covariation between ```duration``` and ```f1z```. This is a little less intuitive, but previous research has indeed shown that L1 English and L1 Japanese speakers may exhibit different **F1 transition duration** profiles. So, it would be interesting to visualise PC2 to show between-group differences:
 
@@ -1143,7 +1143,16 @@ anova(m1, m3, test = "Chisq")
 emmeans::emmeans(m1, pairwise ~ language | segment:vowel, adjust = "tukey")
 ```
 
-## Summary
+## Saving the model
+
+It will be interesting to fit a linear mixed-effect model on PC scores tomorrow. So let's save the model ```scores_df``` so that we can retrieve it easily when we need it.
+
+```{r}
+save(scores_df, file = "data/pca_scores_df.rda")
+```
+
+
+# Summary
 
 I hope I have shown that PCA is a strong tool to **identify salient dimensions** in the data in a **bottom-up/data-driven** manner. It projects the data onto a new dimension based on the identified **principal components**. Furthermore, we can obtain **PC scores** for each observation along the PC dimensions, and we can use them as **input** to further statistical analysis. The flexibility in the choice of statistical modelling is an advantage of PCA. 
 

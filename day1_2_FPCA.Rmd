@@ -866,6 +866,15 @@ dat_time$word <- as.factor(dat_time$word)
 # m1 <- brms::brm(PC1 ~ language + context + liquid + language:context + context:liquid + language:liquid + (1 + context:liquid|speaker) + (1 + language|word), prior = b1_prior, data = dat_time, family = "gaussian", sample_prior = "yes", save_pars = save_pars(all = TRUE), save_model = TRUE)
 ```
 
+# Save the data
+
+As we did for PCA, let's save the data ```dat_time``` so that we can use it later.
+
+```{r}
+save(dat_time, file = "data/fpca_dat_time.rda")
+```
+
+
 # Wrap-up question
 
 What hypothesis would you like to make to test the differences in dynamic F2 trajectories?

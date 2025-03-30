@@ -642,9 +642,147 @@ Our modelling is based on the treatment coding scheme, so let's check the baseli
 ```
 
 
-## Advanced: modelling English /l/ and /ɹ/ together
+# Bonus: Fitting LMEs to PC scores
 
-We have decided to build separate models for English /l/ and /ɹ/. But it is also possible to model both together. How would you do it? How do such differences in modelling influence the way you formulate research questions?
+Do you remember that we saved the PCA/FPCA results from Day 1? It is also possible to test whether e.g., L1 Japanese and L1 English speakers differ in PC/FPC scores.
+
+## PCA: PC1 for F2 and F3 covariation
+
+The PCA analysis identified that PC1 captured covariation of F2 and F3.
+
+### Loading data
+
+```{r}
+# load PCA data
+load(file = "data/pca_scores_df.rda")
+
+# PCA data is stored in scores_df
+colnames(scores_df)
+
+# a quick visualisation
+scores_df |> 
+  ggplot(aes(x = language, y = PC1)) +
+  geom_jitter(aes(colour = language), alpha = 0.4) +
+  geom_violin(aes(fill = language), alpha = 0.2) +
+  geom_boxplot(width = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  scale_colour_manual(values = cbPalette) +
+  scale_fill_manual(values = cbPalette) +
+  facet_grid(segment ~ vowel) +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### Fitting models for /l/
+
+```{r message=FALSE, warning=FALSE}
+# subset data for /l/
+scores_df_L <- scores_df |> 
+  dplyr::filter(
+    segment == "L"
+  )
+
+# convert variables into factor
+scores_df_L <- scores_df_L |> 
+  dplyr::mutate(
+    language = as.factor(language),
+    vowel = as.factor(vowel),
+    speaker = as.factor(speaker),
+    word = as.factor(word)
+  )
+
+# full model
+m1_pca <- lme4::lmer(PC1 ~ language + vowel + language:vowel + (1 | speaker) + (1 | word), data = scores_df_L, REML = FALSE)
+
+# model summary
+summary(m1_pca)
+```
+
+### Model comparison
+
+```{r}
+# full model
+m1_pca <- lme4::lmer(PC1 ~ language + vowel + language:vowel + (1 | speaker) + (1 | word), data = scores_df_L, REML = FALSE)
+
+# nested model for interaction
+m2_pca <- lme4::lmer(PC1 ~ language + vowel + (1 | speaker) + (1 | word), data = scores_df_L, REML = FALSE)
+
+# model comparison
+anova(m1_pca, m2_pca, test = "Chisq")
+```
+
+
+## FPCA: FPC1 for Dynamic F2 variability
+
+We can also fit linear mixed-effect models for the FPC scores. This means that we can perform dynamic analysis with our familiar LMEs! 
+
+### Loading data
+
+```{r message=FALSE, warning=FALSE}
+# load FPCA data
+load(file = "data/fpca_dat_time.rda")
+
+# FPCA data is stored in dat_time
+colnames(dat_time)
+
+# subset only unique values as there are many duplicates
+dat_time <- dat_time |> 
+  dplyr::group_by(file, speaker, gender, language, word, liquid, context) |> 
+  dplyr::summarise(PC1 = unique(PC1),
+                   PC2 = unique(PC2)) |> 
+  dplyr::ungroup()
+
+# a quick visualisation
+dat_time |> 
+  ggplot(aes(x = language, y = PC1)) +
+  geom_jitter(aes(colour = language), alpha = 0.4) +
+  geom_violin(aes(fill = language), alpha = 0.2) +
+  geom_boxplot(width = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.4) +
+  scale_colour_manual(values = cbPalette) +
+  scale_fill_manual(values = cbPalette) +
+  labs(x = "language", y = "FPC1", title = "Between-group difference in FPC1 values for F2 dynamics") +
+  facet_grid(liquid ~ context) +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+### Fitting models for /l/
+
+```{r message=FALSE, warning=FALSE}
+# subset data for /l/
+dat_time_L <- dat_time |> 
+  dplyr::filter(
+    liquid == "L"
+  )
+
+# convert variables into factor
+dat_time_L <- dat_time_L |> 
+  dplyr::mutate(
+    language = as.factor(language),
+    context = as.factor(context),
+    speaker = as.factor(speaker),
+    word = as.factor(word)
+  )
+
+# full model
+m1_fpca <- lme4::lmer(PC1 ~ language + context + language:context + (1 | speaker) + (1 | word), data = dat_time_L, REML = FALSE)
+
+# model summary
+summary(m1_fpca)
+```
+
+### Model comparison
+
+```{r message=FALSE, warning=FALSE}
+# full model
+m1_fpca <- lme4::lmer(PC1 ~ language + context + language:context + (1 | speaker) + (1 | word), data = dat_time_L, REML = FALSE)
+
+# nested model for interaction
+m2_fpca <- lme4::lmer(PC1 ~ language + context + (1 | speaker) + (1 | word), data = dat_time_L, REML = FALSE)
+
+# model comparison
+anova(m1_fpca, m2_fpca, test = "Chisq")
+```
+
 
 # Wrap-up question
 
