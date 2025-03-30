@@ -30,6 +30,15 @@ Whereas we have identified **what parameters** would characterise the between-gr
 
 We will use **Functional Principal Component Analysis (FPCA)** to explore salient dynamic properties in the data. The basic architecture is quite similar to the ordinary PCA that we have just seen with a couple of key differences as it deals with **functional** data. 
 
+# FPCA: Roadmap
+
+Here is the brief road map in the FPCA section:
+
+```{r echo=FALSE, fig.align='center', out.width="75%"}
+
+knitr::include_graphics("image/fpca_roadmap.png")
+```
+
 # Preliminaries
 
 ## Installing/loading packages
@@ -742,7 +751,9 @@ dat_time <- dat_time |>
 dat_time <- left_join(dat_time, rec, by = "col_number")
 ```
 
-### Reconstructed individual F2 trajectories based on FPC1
+
+
+### Reconstructed individual F2 trajectories based on FPC1
 
 We have everything to reconstruct F2 trajectories from FPC scores: eigenfunctions, mean curve, and FPC scores. Let's reconstruct the individual F2 contours from FPC1 scores:
 
@@ -769,7 +780,9 @@ dat_time |>
 
 It is indeed true that FPC1 seems to capture variation associated with vowel context. The visualisation suggests that L1 English speakers have a smaller variation especially for English /ɹ/. It is also quite evident that L1 Japanese speakers do not seem to differentiate F2 trajectories between /æ/ and /u/, which is rather surprising. 
 
-### Reconstructed individual F2 trajectories based on FPC2
+
+
+### Reconstructed individual F2 trajectories based on FPC2
 
 What does F2 trajectory looks like when reconstructed from FPC2?
 
@@ -786,6 +799,7 @@ dat_time |>
 ```
 
 OK, so there's something interesting here: we speculated earlier that FPC2 may be capturing the difference between English /l/ and /ɹ/, but it doesn't seem to be the case. Rather, FPC2 seems to capture **the degree of vocalic anticipatory coarticulation** that can be observed during the liquid interval. 
+
 
 ### Reconstructed individual F2 trajectories based on FPC1+FPC2
 

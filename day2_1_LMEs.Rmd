@@ -36,6 +36,16 @@ L1 Japanese speakers show differences in F2 and F3 characteristics in their prod
 
 Let's test the hypothesis using two methods today: **linear mixed-effect models (LMEs)** for static analysis and **generalised additive mixed-effect models (GAMMs)** for dynamic analysis. 
 
+# LMEs: Roadmap
+
+Here is the brief road map in the LMEs section:
+
+```{r echo=FALSE, fig.align='center', out.width="75%"}
+
+knitr::include_graphics("image/lmes_roadmap.png")
+```
+
+
 # LMEs and GAMMs: Overview
 
 Here are some key similarities and differences between LMEs and GAMMs:

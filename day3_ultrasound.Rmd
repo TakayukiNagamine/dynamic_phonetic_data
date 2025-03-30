@@ -23,6 +23,15 @@ cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 ```
 
 
+# PCA-based ultrasound data analysis: Roadmap
+
+Here is the brief road map in the ultrasound data analysis:
+
+```{r echo=FALSE, fig.align='center', out.width="75%"}
+
+knitr::include_graphics("image/ultrasound_roadmap.png")
+```
+
 # Preliminaries
 
 ## Loading packages

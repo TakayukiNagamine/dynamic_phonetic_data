@@ -34,6 +34,16 @@ Taken together, we need to take the **temporal** dimension into account when ana
 
 In this session, therefore, let's try modelling the whole **formant contours** directly using Generalised Additive Mixed-Efefct Models (GAMMs).
 
+# GAMMs: Roadmap
+
+Here is the brief road map in the GAMMs section. 
+
+```{r echo=FALSE, fig.align='center', out.width="75%"}
+
+knitr::include_graphics("image/gamms_roadmap.png")
+```
+
+
 # Generalised Additive Mixed-Effect Models (GAMMs)
 
 # Preliminaries

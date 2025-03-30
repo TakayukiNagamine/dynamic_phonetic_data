@@ -109,7 +109,15 @@ https://osf.io/2phx5/
 
 Now, let's start the fun part: data analysis! As mentioned earlier, we will build things up from the static analysis before going into the dynamic analysis. 
 
-I assume that people have varying degrees of experience in statistics, so let's cover some basics first.
+I assume that people have varying degrees of experience in statistics, so let's cover some basics first, including:
+
+- **Mean** and **median**
+
+- **Standard deviation (SD)**
+
+- **Linear vs non-linear data**
+
+- **Data visualisation basics**: scatter, box and violin plots.
 
 ## Mean and median: the distribution "centre"
 
@@ -277,9 +285,9 @@ Effective data visualisation often combines multiple types of plots. In my usual
 
 2. **Box plot**: Superimposed on them is the **box plot**. The box plot consists of a rectangle box, a solid horizontal line in the middle of the box, and 'whiskers' at the top and bottom of the box. Each of them represents key parameters of a distribution:
 
-- The solid horizontal line represents **median**.
+- The solid horizontal line represents **median**, which corresponds to the **second quartile** (Q2).
 
-- Each end of the box represents **first** and **third quartiles**. Broadly speaking, you could understand that the box covers the middle 50% of the data, which is divided into half by the solid black line. The lower end of the box is the first quartile (Q1) and the upper end is the third quartile (Q3). Right in the middle is the median, which is the second quartile (Q2).
+- Each end of the box represents **first** (Q1) and **third quartiles** (Q3), and the distance between Q1 and Q3 is called **interquartile range** (IQR). Broadly speaking, you could understand that the box covers the middle 50% of the data, which is divided into half by the solid black line. The lower end of the box is the first quartile (Q1) and the upper end is the third quartile (Q3). 
 
 - The length of the whiskers below and above the box is determined such that:
 
@@ -370,11 +378,18 @@ ggplot(data, aes(x = 1, y = values)) +
 ```
 
 
-# Data wrangling and visualisation
+# PCA: Roadmap
 
 OK, so much for the basics, and let's turn to **bottom-up**, exploratory approaches to data analysis using **principal component analysis (PCA)**.
 
 These tools can be useful when (1) reducing data dimensions into a manageable number of variables and (2) identifying the degrees to which each parameter contributes to the data structure. 
+
+Here is the brief road map in the rest of the section:
+
+```{r echo=FALSE, fig.align='center', out.width="75%"}
+
+knitr::include_graphics("image/pca_roadmap.png")
+```
 
 We will run up to PCA in a moment, but let's start with spending some time understanding data through **data wrangling**.
 
