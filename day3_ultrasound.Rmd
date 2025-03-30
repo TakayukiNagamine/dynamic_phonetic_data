@@ -1181,6 +1181,8 @@ itsadug::acf_resid(m2)
 
 ### Shape + height difference
 
+Let's test an overall effect of ```LangSeg.ord``` onto the PC1z trajectory pattern.
+
 ```{r warning=FALSE, message=FALSE}
 # full model with ML
 m2 <- mgcv::bam(PC1z ~ LangSeg.ord + s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
@@ -1194,12 +1196,14 @@ itsadug::compareML(m2, m3, suggest.report = TRUE)
 
 ### Shape difference
 
+We'll now test whether there is a shape difference between trajectories. 
+
 ```{r warning=FALSE, message=FALSE}
 # full model with ML
 m2 <- mgcv::bam(PC1z ~ LangSeg.ord + s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
 
 # nested model only with smooth term for LangSeg
-m4 <- mgcv::bam(PC1z ~ s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
+m4 <- mgcv::bam(PC1z ~ LangSeg.ord + s(prop_time) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
 
 # model comparison
 itsadug::compareML(m2, m4, suggest.report = TRUE)
