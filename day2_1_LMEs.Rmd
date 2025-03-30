@@ -13,6 +13,8 @@ output:
 ```{r include=FALSE}
 library(rmdformats)
 library(tidyverse)
+library(kableExtra)  # For nice tables
+library(knitr)
 
 # setting the plot theme globally
 theme_set(theme_classic())
@@ -22,8 +24,58 @@ cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 "#D55E00", "#CC79A7")
 ```
 
+# Introduction
 
-```{r}
+On Day 1, we tried **bottom-up**, **data-driven** approach to spectral analysis using **principal component analysis (PCA)** and **functional principal component analysis (FPCA)**. They were all data-driven approaches to **hypothesis generation**, although it was also possible to conduct hypothesis testing using the derived PC scores. PCA and FPCA offer flexible approach to data analysis given that you can analyse both static and dynamic analyses with statistical tests that you're familiar with. 
+
+Through PCA and FPCA, we also explored the data and found out that **the second and third formants** can be an important acoustic parameter to better understand the underlying mechanism in L1 Japanese speakers' difficulty in producing English /l/ and /ɹ/. From this, we could formulate a (general) hypothesis that:
+
+```
+L1 Japanese speakers show differences in F2 and F3 characteristics in their production of L2 English /l/ and /ɹ/ compared to L1 English speakers.
+```
+
+Let's test the hypothesis using two methods today: **linear mixed-effect models (LMEs)** for static analysis and **generalised additive mixed-effect models (GAMMs)** for dynamic analysis. 
+
+# LMEs and GAMMs: Overview
+
+Here are some key similarities and differences between LMEs and GAMMs:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# R Markdown table using knitr::kable
+table_data <- data.frame(
+  Feature = c("Model Type", "Handling of Nonlinearity", "Use in Acoustic Phonetics", 
+              "Fixed Effects", "Random Effects", "Smooth Terms", "Interpretability", 
+              "Computational Complexity"),
+  LMEs = c("Linear regression with mixed effects", 
+          "Assumes linear relationships", 
+          "Used for analyzing static formant values, VOT, speech rate, etc.", 
+          "Effects modeled as linear coefficients", 
+          "Accounts for speaker and item variability", 
+          "Not applicable", 
+          "Easy to interpret fixed effects", 
+          "Generally lower"),
+  GAMMs = c("Generalized additive model with mixed effects", 
+           "Can model nonlinear relationships using splines", 
+           "Used for time-varying speech data like formant trajectories, f0 contours", 
+           "Effects can be linear or smooth", 
+           "Accounts for speaker and item variability", 
+           "Uses splines to model smooth variation over time", 
+           "More complex due to smooth terms", 
+           "Higher due to spline fitting")
+)
+
+# Display as a nice HTML table
+kable(table_data, format = "html", escape = FALSE)  |> 
+  kable_styling("striped", full_width = F)
+```
+
+Linear mixed-effect models are potent tools in phonetics research nowadays for its capability to account for **random effects**. They usually refer to the variation in the data caused by factors that we are not interested in but still cannot ignore really. In phonetics research, this is usually associated with the effects of **speaker/participant** and **item/word**. 
+
+For example, the following visualisation exemplifies speaker- and item-related random effects. The first plot shows that each speaker gets their own intercept (= **random intercept**) and also different degrees of slope for each vowel context (= **random slope**). This is notated in the LMEs as: ```(1 + vowel | participant)```.
+
+Similarly, in the second plot, it is shown that each item gets their own intercept (= **random intercept**) and also different slops depending on the speaker's L1 (= **random slope**). This can be specified in the model as ```(1 + language | item)```.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results=FALSE}
 # Load necessary packages
 library(lme4)
 library(ggplot2)
@@ -83,20 +135,171 @@ summary(model)
 ggplot(data, aes(x = vowel, y = F2, color = participant, group = participant)) +
   geom_point(alpha = 0.6) +
   geom_line(stat = "summary", fun = mean, size = 1) +
-  labs(title = "Participant-specific vowel effects on F2", y = "F2 (Hz)", x = "Vowel") +
-  facet_wrap(~ vowel)
+  labs(title = "Participant-specific vowel effects on F2", y = "F2 (Hz)", x = "Vowel")
 
 # Plot: Item-specific language slopes
 ggplot(data, aes(x = language, y = F2, color = item, group = item)) +
   geom_point(alpha = 0.6) +
   geom_line(stat = "summary", fun = mean, size = 1) +
   labs(title = "Item-specific language effects on F2", y = "F2 (Hz)", x = "Language")
-
-
 ```
 
+For future reference, **GAMMs** can also account for random effects. Later today, we'll use an approach based on **factor smooths**, in which each participant/item gets its own time-varying smooths. This can be thought of as a random effect combining both intercept and slope.
 
-# Statistical analysis
+```{r echo=FALSE, message=FALSE, warning=FALSE, results=FALSE}
+library(mgcv)
+library(ggplot2)
+library(dplyr)
+
+# Simulated data
+set.seed(123)
+n_speakers <- 5
+n_timepoints <- 50
+
+data <- expand.grid(Speaker = paste0("S", 1:n_speakers), Time = seq(0, 1, length.out = n_timepoints))
+data$F2 <- with(data, 1500 + 300*sin(2*pi*Time) + rnorm(nrow(data), 0, 50) + as.numeric(Speaker) * 20)
+
+# Fit a GAMM with factor smooths
+mod <- gam(F2 ~ s(Time, by = Speaker) + s(Speaker, bs="re"), data = data, method = "REML")
+
+# Predict for visualization
+pred <- data |> 
+  group_by(Speaker, Time) |> 
+  summarise(F2_fit = predict(mod, newdata = data.frame(Speaker = unique(Speaker), Time = Time), type = "response"), .groups = "drop")
+
+# Plot the factor smooths
+ggplot(pred, aes(x = Time, y = F2_fit, color = Speaker)) +
+  geom_line(size = 1.2) +
+  labs(title = "Factor Smooths in GAMMs",
+       x = "Time (normalized)",
+       y = "Predicted F2 (Hz)",
+       color = "Speaker")
+```
+
+# Data preparation: Preliminaries
+
+We'll first do some preliminary process running up to the LMEs analysis. 
+
+## Loading packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse) # data wrangling and visualisation
+library(lme4) # for fitting models
+library(lmerTest) # for obtaining details in the lme4 results
+library(emmeans) # for post-hoc analysis
+```
+
+## Loading data
+
+```{r message=FALSE}
+# import the csv file "initial.liquid.static.csv" from the "data" directory and save it as "df_mid"
+df_mid <- readr::read_csv("data/initial.liquid.static.csv")
+```
+
+# Check data & data wrangling
+
+As usual, let's start with checking the data.
+
+```{r}
+# check the columns
+colnames(df_mid)
+```
+
+We'll omit some variables and rename some variable names as we did yesterday.
+
+```{r}
+# remove columns 
+df_mid <- df_mid |> 
+  dplyr::select(-c(IsApproximant, IsAcoustic, omit))
+
+# convert the ARPABET notations into the IPA symbols.
+df_mid <- df_mid |> 
+  dplyr::mutate(
+    vowel = case_when(
+      next_sound == "AE1" ~ "/æ/",
+      next_sound == "IY1" ~ "/i/",
+      next_sound == "UW1" ~ "/u/",
+    )
+  )
+```
+
+## Checking the number of participants, tokens...
+
+Let's also obtain some descriptive statistics here.
+
+```{r}
+# number of participants
+df_mid |> 
+  dplyr::group_by(language) |> 
+  dplyr::summarise(n = n_distinct(speaker)) |> 
+  dplyr::ungroup()
+
+# number of tokens per segment
+df_mid |> 
+  dplyr::group_by(segment) |> 
+  dplyr::summarise(n = n()) |> 
+  dplyr::ungroup()
+```
+
+## Scaling formant values
+
+To compare formant values across participants, we'll normalise them using z-scores.
+
+```{r}
+df_mid <- df_mid |> 
+  dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
+  dplyr::mutate(
+    f1z = as.numeric(scale(f1)), # scale f1 into z-score
+    f2z = as.numeric(scale(f2)), # scale f2 into z-score
+    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+  ) |> 
+  dplyr::ungroup() # don't forget ungrouping
+```
+
+And check the mean and sd:
+
+```{r}
+# check mean and sd of raw/scaled F1 values for each speaker
+df_mid |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f1_mean = mean(f1),
+    f1_sd = sd(f1),
+    f1z_mean = mean(f1z),
+    f1z_sd = sd(f1z)
+  ) |> 
+  dplyr::ungroup() 
+```
+
+# Data visualisation
+
+### Your turn
+
+Could you visualise F1, F2 and F3 values using ```ggpplot```? If you are not sure how to do so, please refer back to the Day 1 PCA materials.
+
+## F1
+
+```{r warning=FALSE, message=FALSE}
+# df_mid |> 
+# ...
+```
+
+## F2
+
+```{r warning=FALSE, message=FALSE}
+# df_mid |> 
+# ...
+```
+
+## F3
+
+
+```{r warning=FALSE, message=FALSE}
+# df_mid |> 
+# ...
+```
+
+# Linear mixed-effect models (LMEs)
 
 The data visualisation seems to suggest some between-group differences, but it still remains unclear exactly how the two groups differ. Here, let's investigate this further using **linear-mixed effect modelling**. 
 
@@ -456,4 +659,3 @@ sessionInfo()
 ```{r include=FALSE}
 save(df_mid, file = "data/df_mid.rda")
 ```
-

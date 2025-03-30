@@ -180,7 +180,6 @@ df_dyn |>
 ```
 
 
-
 ## Visualisation
 
 ### raw trajectories
@@ -220,73 +219,6 @@ df_dyn |>
   facet_grid(liquid ~ context) +
   labs(x = "time", y = "F1 (z-normalised)", title = "smoothed time-varying change in F1 frequency") +
   theme(strip.text.y = element_text(angle = 0))
-```
-
-
-# How do we model F2 trajectory?
-
-I hope that you have enjoyed data visualisation! You'd know if you have tried plotting **F2**, but it seems that the F2 trajectories show very interesting between-group difference. 
-
-This is also a very interesting dimension to explore from the theoretical point of view, because previous research has claimed that L1 Japanese speakers would make it **easier** to acquire the use of F2 in a target-like manner. But the dynamic data suggests that L1 Japanese speakers do something really different from L1 English speakers. Let's take a look at trajectories first below:
-
-```{r warning=FALSE}
-# F2
-df_dyn |> 
-  ggplot(aes(x = time, y = f2z)) +
-  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
-  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
-  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
-  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
-  scale_colour_manual(values = cbPalette) + 
-  facet_grid(liquid ~ context) +
-  labs(x = "time", y = "F2 (z-normalised)", title = "raw/smoothed time-varying change in F2 frequency") +
-  theme(strip.text.y = element_text(angle = 0))
-```
-
-L1 English speakers follow somewhat consistent patterns across vowel contexts for both English /l/ and /ɹ/. They all start at a lower F2 at the beginning of the liquid onset (= 0%). The trajectories then go higher up to the maximal point in the middle of the interval (= around 50%). After reaching the highest peak, the trajectories go down towards the end of the interval (= 100%). Although there are some differences in terms of the timing that they achieve the maximal point, the overall patterns are fairly consistent. 
-
-L1 Japanese speakers, on the other hand, show distinct trajectory patterns across vowel contexts. In the /æ/ context, both English /l/ and /ɹ/ trajectories show an almost monotonic, linear decrease from the liquid onset (= 0%) towards the vowel offset (= 100%). The trajectories in the /u/ context are also similar. In these two vowel contexts, the English /ɹ/ trajectories seem to mark the highest point at around 25% time point, but it is not as pronounced as that of L1 English speakers. 
-
-Their /i/ trajectories, on the other hand, show a similar pattern to that of L1 English speakers. They start at a lower F2 value at the liquid onset (= 0%), go higher up, and then show a slight decrease towards the end of the interval. The timing of the maximal point, however, is quite early (i.e., at around 40-45% time point) compared to L1 English speakers. 
-
-### Your turn
-
-Please compare and discuss the static and dynamic plots for F2. 
-
-**Note**: The static analysis is based on the F2 measurement at the **liquid midpoint**. The dynamic analysis shows time-varying changes in F2 over **liquid-vowel** interval. 
-
-```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=8}
-# load static data
-load(file = "data/df_mid.rda")
-
-# F2 static
-f2_static <- df_mid |> 
-  ggplot(aes(x = language, y = f2z)) +
-  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
-  geom_violin(alpha = 0.4) +
-  geom_boxplot(width = 0.4, alpha = 0.4) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
-  scale_colour_manual(values = cbPalette) + 
-  ylim(c(-4, 4)) +
-  facet_grid(segment ~ vowel) +
-  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 liquid midpoint") +
-  theme(strip.text.y = element_text(angle = 0))
-
-# F2 dynamic
-f2_dynamic <- df_dyn |> 
-  ggplot(aes(x = time, y = f2z)) +
-  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
-  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
-  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
-  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
-  scale_colour_manual(values = cbPalette) + 
-  facet_grid(liquid ~ context) +
-  labs(x = "time", y = "F2 (z-normalised)", title = "F2 change over liquid-vowel interval") +
-  theme(strip.text.y = element_text(angle = 0))
-
-ggpubr::ggarrange(f2_static, f2_dynamic, ncol = 1)
 ```
 
 # From linear to non-linear modelling: Introducting Generalised Additive Mixed Effects Models (GAMMs)
@@ -490,7 +422,7 @@ The model specification notation is somewhat similar to the one for the ```lme4:
 
 As explained earlier, a GAM model can take two kinds of predictor variables: **parametric** and **smooth** terms. **Parametric terms** specify predictors that would influence a constant, overall influence on the dependent variable. This usually corresponds to the **height** of the trajectory. In the model above, this corresponds to ```language``` and ```context```. 
 
-The new addition from the linear model would be **smooth terms** which allow GA(M)Ms to fit non-linear effects as a function of a variable. Smooth terms are notated as ```s()```. This usually corresponds to the **shape** of the trajectory. And in the model above, you can see a series of ```s()``` terms, including ```s(time)```, ```s(time, by = language)``` and ```s(time, by = context)```. We will cover the specifics later, but basically these instruct GAM to model **the non-linearity seen in F2 (dependint variable) as a function of time**. 
+The new addition from the linear model would be **smooth terms** which allow GA(M)Ms to fit non-linear effects as a function of a variable. Smooth terms are notated as ```s()```. This usually corresponds to the **shape** of the trajectory. And in the model above, you can see a series of ```s()``` terms, including ```s(time)```, ```s(time, by = language)``` and ```s(time, by = context)```. We will cover the specifics later, but basically these instruct GAM to model **the non-linearity seen in F2 (dependent variable) as a function of time**. 
 
 # Let's model F2 trajectory
 
@@ -683,7 +615,6 @@ The practice here allows us to proceed onto model comparison between the full mo
 
 You can re-use ```m3``` and ```m4```. In addition, you might also want to specify ```m5```. Don't also forget about changing the estimation method. 
 
-
 ```{r include=FALSE, warning=FALSE, message=FALSE}
 df_dyn_L$context.ord <- as.ordered(df_dyn_L$context)
 contrasts(df_dyn_L$context.ord) <- "contr.treatment"
@@ -711,7 +642,7 @@ In GAMMs, non-linear trajectories are captured through smooth terms, while param
 
 Here's how to assess the significance of each term:
 
-### 1. Full Model vs. Nested Model (with Both Parametric and Smooth Terms)
+### 1. Full model vs. nested model (excluding both parametric and smooth terms)
 
 To determine the overall significance of a variable's effect (both on height and shape):
 
@@ -719,21 +650,21 @@ To determine the overall significance of a variable's effect (both on height and
 
 **Interpretation**:
 
-  - If the full model improves the fit significantly (using a likelihood ratio test or other model comparison methods), this suggests that the variable of interest affects both the trajectory height and the trajectory shape.
-    
-  - If the full model does not improve the fit significantly, this suggests that the variable of interest does not significantly affect the dependent variable (either in terms of height or shape).
+  - If the full model significantly improves the fit (via LRT, AIC, or WAIC), then the variable influences the dependent variable (either via an overall shift or a time-varying effect).
 
-### 2. Full Model vs. Nested Model (with Parametric Terms Only)
+  - If there is no significant improvement, then the variable does not significantly impact the dependent variable.
 
-If the full model is found to be significantly better than the nested model in step 1, we can further investigate whether the variable affects both the height and shape of the trajectory:
+### 2. Full model vs. nested model (including oarametric terms only for shape comparison)
+
+If the full model was significantly better in Step 1, check whether the effect is shape-dependent by removing only the smooth term for that variable:
 
 - Compare the full model (which includes both parametric and smooth terms for the variable) with another nested model that retains the parametric term but excludes the smooth term for the variable of interest.
 
 **Interpretation**:
 
-  - If the full model is still significantly better, this suggests that the variable has a significant effect on both the height (parametric term) and shape (smooth term) of the trajectory.
+  - If the full model still fits significantly better, then the variable affects the trajectory shape (time-varying effect).
 
-  - If the full model is not significantly better, this suggests that the variable's effect is primarily on the height dimension (the parametric term) and that the shape (non-linear trajectory) is not significantly influenced by the variable.
+  - If the full model is not significantly better, then the variable’s effect is mainly static (height shift), not shape-dependent.
 
 Let's see how this works for the ```language.ord``` effect: 
 
@@ -765,7 +696,7 @@ m4_2 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = cont
 compareML(m4, m4_2, suggest.report = FALSE)
 ```
 
-The full model still improves the degree of model fit. This suggests that ```language.ord``` has a statistically significant difference on both **height** and **shape** dimensions. 
+The full model still improves the degree of model fit. This suggests that ```language.ord``` has a statistically significant difference on both **height** and **shape** dimensions, but specifically with a notable **shape** difference.
 
 ### Your turn
 

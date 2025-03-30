@@ -1155,7 +1155,7 @@ Summarising what we have found so far:
 
 - We can also use **PC scores as data** for further statistical analysis. **This flexibility is where PCA shines!**
 
-# Discussion: your turn
+# Wrap-up question
 
 What acoustic parameters would you like to test using **linear mixed-effect models** tomorrow?
 

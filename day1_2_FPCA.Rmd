@@ -271,6 +271,74 @@ Please try writing a code chunk to visualise (1) raw and (2) smoothed trajectori
 
 ```
 
+# Why dynamic analysis?
+
+I hope that you have enjoyed data visualisation! You'd know if you have tried plotting **F2**, but it seems that the F2 trajectories show very interesting between-group difference. 
+
+This leads to a discussion as to **why we need to analyse dynamic data**, so let's spend a moment thinking about this. 
+
+```{r warning=FALSE}
+# F2
+df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "raw/smoothed time-varying change in F2 frequency") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+The dynamic data offers a new insight to the existing research findings: previous research has claimed that L1 Japanese speakers would make it **easier** to acquire the use of F2 in a target-like manner. But the dynamic data suggests that L1 Japanese speakers do something really different from L1 English speakers.
+
+L1 English speakers follow somewhat consistent patterns across vowel contexts for both English /l/ and /ɹ/. They all start at a lower F2 at the beginning of the liquid onset (= 0%). The trajectories then go higher up to the maximal point in the middle of the interval (= around 50%). After reaching the highest peak, the trajectories go down towards the end of the interval (= 100%). Although there are some differences in terms of the timing that they achieve the maximal point, the overall patterns are fairly consistent. 
+
+L1 Japanese speakers, on the other hand, show distinct trajectory patterns across vowel contexts. In the /æ/ context, both English /l/ and /ɹ/ trajectories show an almost monotonic, linear decrease from the liquid onset (= 0%) towards the vowel offset (= 100%). The trajectories in the /u/ context are also similar. In these two vowel contexts, the English /ɹ/ trajectories seem to mark the highest point at around 25% time point, but it is not as pronounced as that of L1 English speakers.
+
+Their /i/ trajectories, on the other hand, show a similar pattern to that of L1 English speakers. They start at a lower F2 value at the liquid onset (= 0%), go higher up, and then show a slight decrease towards the end of the interval. The timing of the maximal point, however, is quite early (i.e., at around 40-45% time point) compared to L1 English speakers. 
+
+### Your turn
+
+Please compare and discuss the static and dynamic plots for F2. Could you discuss what static analysis possibly overlooks?
+
+**Note**: The static analysis is based on the F2 measurement at the **liquid midpoint**. The dynamic analysis shows time-varying changes in F2 over **liquid-vowel** interval. 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=8}
+# load static data
+load(file = "data/df_mid.rda")
+
+# F2 static
+f2_static <- df_mid |> 
+  ggplot(aes(x = language, y = f2z)) +
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  geom_violin(alpha = 0.4) +
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  ylim(c(-4, 4)) +
+  facet_grid(segment ~ vowel) +
+  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 liquid midpoint") +
+  theme(strip.text.y = element_text(angle = 0))
+
+# F2 dynamic
+f2_dynamic <- df_dyn |> 
+  ggplot(aes(x = time, y = f2z)) +
+  geom_point(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_path(aes(colour = language, group = file), width = 0.3, alpha = 0.1) +
+  geom_smooth(aes(group = language), colour = "white", linewidth = 2.8, se = FALSE) +
+  geom_smooth(aes(colour = language, group = language), linewidth = 1.8, se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  scale_colour_manual(values = cbPalette) + 
+  facet_grid(liquid ~ context) +
+  labs(x = "time", y = "F2 (z-normalised)", title = "F2 change over liquid-vowel interval") +
+  theme(strip.text.y = element_text(angle = 0))
+
+ggpubr::ggarrange(f2_static, f2_dynamic, ncol = 1)
+```
+
 # Functional Principal Component Analysis (FPCA)
 
 ## Introduction
@@ -798,7 +866,7 @@ dat_time$word <- as.factor(dat_time$word)
 # m1 <- brms::brm(PC1 ~ language + context + liquid + language:context + context:liquid + language:liquid + (1 + context:liquid|speaker) + (1 + language|word), prior = b1_prior, data = dat_time, family = "gaussian", sample_prior = "yes", save_pars = save_pars(all = TRUE), save_model = TRUE)
 ```
 
-# Discussion: Your turn
+# Wrap-up question
 
 What hypothesis would you like to make to test the differences in dynamic F2 trajectories?
 
