@@ -22,7 +22,31 @@ cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 "#D55E00", "#CC79A7")
 ```
 
+
 # Preliminaries
+
+## Loading packages
+
+
+```{r warning=FALSE, message = FALSE}
+# data handling and visualisation
+library(tidyverse)
+library(lubridate)
+library(ggpubr)
+
+# FPCA + LMEs
+library(fdapace)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+
+# GAMMs
+library(mgcv)
+library(itsadug)
+library(tidygam) # for 'get_gam_predictions'
+source("https://raw.githubusercontent.com/soskuthy/gamm_intro/master/gamm_hacks.r")
+```
+
 
 ## Loading data
 
@@ -54,15 +78,13 @@ dat <- na.omit(dat)
 
 ## Renaming columns
 
-Let's rename the column names. The code here assumes that you have exported the following variables:
+Let's rename the column names. It is assumed that you have exported tongue shape at **11 equidistant time points** throughout the interval. Also, the code here assumes that you have exported the following variables:
 
 - Client name (Surname, First name, full name - whichever you prefer)
 - Date and time of recording (not time within recording)
 - Prompt
 - Label (usually made on Praat TextGrid and then imported to AAA)
 - X, Y values of spline DLC_Tongue (not *Tongue* - this is for XY values derived from older tongue surface tracking methods)
-
-Also, it is assumed that you have exported tongue shape at 11 equidistant points throughout the interval.
 
 The DeepLabCut plug-in on AAA tracks midsagittal tongue splines based on 11 points along the tongue surface. This means that we will obtain 22 values - X/Y for point 1, X/Y for point 2, and so on. The code below specifies this with Point 1 at the vallecula (i.e., a little ‘valley’ formed by the roots of the tongue and the epiglottis) and moving forward as the number increases until Point No. 11 = tongue tip. For further information about the tracking points, please refer to the following paper:
 
@@ -107,8 +129,6 @@ dat <- dat |>
   filter(!str_detect(rec_date, "2022/11/29 17:48:39")
   )
 
-dat$rec_date <- lubridate::parse_date_time(dat$rec_date, c("Ymd HMS","dmY HM"))
-
 # Specifying which time point of 11 each tongue spline is associated with. 
 dat <- dat |> 
   group_by(rec_date, speaker) |> 
@@ -144,7 +164,7 @@ It is often the case that we have participants say each prompt multiple times. P
 
 Although AAA does not export information on repetition (as far as I know), we can easily add repetition based on the date/time of recording.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 ## 1. Getting R to recognise dates and time with the lubridate package
 dat_long$rec_date <- lubridate::parse_date_time(dat_long$rec_date, c("Ymd HMS","dmY HM"))
 # multiple formats are specified here because some rec_dates look weird when exported from AAA
@@ -172,7 +192,7 @@ dat_long <- dat_long |>
 
 ## Creating tongue spline ID
 
-In addition, although rec_date can act as a unique identifier for each token, I don’t particularly find it efficient to continue to use this for reasons mentioned above. I usually create something called ```token ID``` by combining speaker, prompt and repetition.
+In addition, although rec_date can act as a unique identifier for each token, I don’t particularly find it efficient to continue to use this. I usually create something called ```token ID``` by combining speaker, prompt and repetition.
 
 In addition, when plotting tongue spline, you will need some grouping but this can sometimes be quite tedious. I find it useful to define a unique id for each tongue spline (i.e., a set of 22 data points - 11 points for each XY). Later on, you can group data by this ```spline ID``` to avoid ggplot from misunderstanding data structure. I combine ```token_id``` and ```proportion_time```.
 
@@ -207,7 +227,7 @@ dat_long <- dat_long |>
 
 # Data visualisation: tongue shape
 
-The following code produces Figure 3 on my ICPhS paper.
+The following code produces Figure 3 on my ICPhS paper. Note the grouping variables in the ```geom_path()``` function. 
 
 ```{r fig.width=10, fig.height=10}
 # Converting the speaker ID into more straightforward naming convention
@@ -223,6 +243,7 @@ tongue_plot <- dat_long_plot |>
   na.omit() |> 
   dplyr::group_by(speaker) |> 
   ggplot2::ggplot() +
+  # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
   geom_path(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time)), linewidth = 1, show.legend = TRUE) +
   geom_hline(yintercept = 0, linetype = 3) +
   theme_classic() +
@@ -244,16 +265,23 @@ tongue_plot <- dat_long_plot |>
 tongue_plot
 ```
 
-# Tracking dynamic PC
+# Principal Component Analysis (PCA) on midsagittal tongue shape
 
-## Data Wrangling
+While the visual inspection makes it fairly obvious that there are some articulatory differences between English and Japanese speakers, a challenging aspect in ultrasound data analysis to quantify such differences. 
 
-```{r}
-# Omit NA before saving
-dat <- na.omit(dat)
-```
+One way of quantification is through **principal component analysis (PCA)**. PCA here identifies the key modes of variation in the 11 DLC knots, and by projecting PCs back onto the original scale, we can infer the salient articulatory dimensions observed in the data. 
 
-## Principal Component Analysis
+This approach is explained in the following book:
+
+Johnson, K. (2008). *Quantitative Methods In Linguistics*. Chichester, England: Wiley-Blackwell.
+
+See particularly: Chapter 3 Phonetics (Section 3.3 Tongue Shape Factors: Principal Component Analysis, pp. 95-102).
+
+## Running PCA using ```prcomp()```
+
+Let's run PCA onto the x/y coordinates for 11 DLC knots. I try using the ```prcomp()``` function here to be consistent with our approach in the workshop, as opposed to the ```princomp()``` function originally used in my ICPhS paper.
+
+The PCA analysis below suggests that PC1 captures 58.03% of the variance observed in the data, followed by PC2 (22.65%) and PC3 (7.66%). This suggests that both ```prcomp()``` and ```princomp()``` outputs very similar results. 
 
 ```{r}
 # perform PCA
@@ -267,22 +295,27 @@ summary(pca_results)
 
 ### Scree plot
 
+Here let's inspect the data. As a rule of thumb, we can use a 5% threshold of the proportion of variance as recommended by Bayeen (2008). The scree plot just visualises the proportion of variance explained by each PC that we just saw using ```summary()```.
+
 ```{r}
-# Plotting the variance explained (optional)
+# Plotting the variance explained
 var_explained <- pca_results$sdev^2 / sum(pca_results$sdev^2)
 
 # making var_explained as a tibble and add colname
-var_explained <- as_tibble(var_explained)
+var_explained <- tidyr::as_tibble(var_explained)
 
+# adding PC number
 var_explained <- var_explained |> 
-  as_tibble() |> 
-  mutate(
+  tidyr::as_tibble() |> 
+  dplyr::mutate(
     PC = row_number()
   )
 
+# only plot PC10 or below 
 var_explained <- var_explained |> 
-  filter(PC < 11) # only plot PC10 or below 
+  dplyr::filter(PC < 11) 
 
+# create scree plot
 scree <- var_explained |> 
   ggplot(mapping = aes(x = PC, y = value)) +
   geom_line() +
@@ -295,15 +328,221 @@ scree <- var_explained |>
   ggtitle("Proportion of Variance explained by each PC") +
   ylim(0, 0.6)
 
+# show plot
 scree
 ```
 
-
 # Projecting PCs back onto midsagittal tongue shape
+
+OK, now the question is what articulatory movement is captured by each PC. As explained in Johnson (2008, p. 100), it is possible to project PC dimensions back on the original scale. In our case, we can reconstruct the *i*-th data point along the tongue surface (e.g., DLC knot 1, 2, 3 etc in our case) and, by extension, visualise the tongue shape at one particular time point decomposed by each PC using the following formula:
+
+$$
+x_{ji} = \bar{x}_i ± s_j * w_{ji} 
+$$
+
+where $\bar{x}$ denotes the mean, *s* means standard deviation (SD) and *w* denotes the PC loading for the $PC_j$ dimension.  
+
+This means that we'll need to extract (1) mean PC scores, (2) standard deviation and (3) PC loadings from the PCA results. 
+
+## Extracting mean and loadings
+
+The mean values are stored in ```pca_results$center```, and the loadings in ```pca_results$rotation```. In order to better understand the structure of a data object, it is useful to inspect it using ```str()```.
+
+```{r}
+# Check the object structure
+str(pca_results)
+
+# Mean values from the output of the PCA
+pca_mean <- tibble::enframe(pca_results$center)
+
+# subset data to make into a matrix of x and y values
+pca_mean <- pca_mean |> 
+  dplyr::mutate(
+    axis_mean = str_sub(name, start = 1, end = 1),
+    number_mean = str_sub(name, start = 3, end = -1)
+  ) |> 
+  dplyr::select(-name) |> 
+  dplyr::relocate(axis_mean, number_mean)
+
+# extract X coordinate values of the mean values
+mean_X <- pca_mean |> 
+  dplyr::filter(axis_mean == "X") |> 
+  dplyr::rename(mean_X = value,
+                axis_mean_X = axis_mean,
+                number_mean_X = number_mean)
+
+# extract Y coordinate values of the mean values
+mean_Y <- pca_mean |> 
+  dplyr::filter(axis_mean == "Y") |> 
+  dplyr::rename(mean_Y = value,
+                axis_mean_Y = axis_mean,
+                number_mean_Y = number_mean)
+
+# combine X and Y values together
+mean_pca <- cbind(mean_X, mean_Y)
+
+## get loadings - eigenvectors
+loadings <- as.table(pca_results$rotation)
+```
+
+## Loadings
+
+Let's only extract PC loadings that are relevant here. We'll focus only on PC1 and PC2 as they jointly account for the majority of variance observed in the data (80.68%) and they should be adequate for us to understand the overall articulatory patterns. 
+
+### PC1
+
+Here is the code to gather necessary information for PC1.
+
+```{r}
+# get loadings for PC1 in a sensible format
+PC1_loadings <- as.data.frame(loadings) |> 
+  dplyr::filter(Var2 == "PC1")
+
+# separate axis and number for each DLC knot 
+PC1_loadings <- PC1_loadings |> 
+  dplyr::mutate(
+    axis_loadings = str_sub(Var1, start = 1, end = 1),
+    number_loadings = str_sub(Var1, start = 3, end = -1)
+  )
+
+## separating X coordinates
+PC1_loadings_X <- PC1_loadings |> 
+  dplyr::filter(axis_loadings == "X") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
+  dplyr::rename(PC1_loadings_X = Freq,
+                axis_loadings_X = axis_loadings,
+                number_loadings_X = number_loadings)
+
+## separating Y coordinates
+PC1_loadings_Y <- PC1_loadings |> 
+  dplyr::filter(axis_loadings == "Y") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
+  dplyr::rename(PC1_loadings_Y = Freq,
+                axis_loadings_Y = axis_loadings,
+                number_loadings_Y = number_loadings)
+
+## bind the X and Y data frames together
+PC1_loadings <- cbind(PC1_loadings_X, PC1_loadings_Y)
+```
+
+### PC2
+
+The same for PC2.
+
+```{r}
+## get loadings for PC2 in a sensible format
+PC2_loadings <- as.data.frame(loadings) |> 
+  dplyr::filter(Var2 == "PC2")
+
+# separate axis and number for each DLC knot 
+PC2_loadings <- PC2_loadings |> 
+  dplyr::mutate(
+    axis_loadings = str_sub(Var1, start = 1, end = 1),
+    number_loadings = str_sub(Var1, start = 3, end = -1)
+  )
+
+## separating X coordinates
+PC2_loadings_X <- PC2_loadings |> 
+  dplyr::filter(axis_loadings == "X") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
+  dplyr::rename(PC2_loadings_X = Freq,
+                axis_loadings_X = axis_loadings,
+                number_loadings_X = number_loadings)
+
+## separating Y coordinates
+PC2_loadings_Y <- PC2_loadings |> 
+  dplyr::filter(axis_loadings == "Y") |> 
+  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::relocate(axis_loadings, number_loadings) |> 
+  # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
+  dplyr::rename(PC2_loadings_Y = Freq,
+                axis_loadings_Y = axis_loadings,
+                number_loadings_Y = number_loadings)
+
+## bind the X and Y data frames together
+PC2_loadings <- cbind(PC2_loadings_X, PC2_loadings_Y)
+```
+
+## Standard deviation
+
+We also need standard deviation associated with each PC. This is stored in ```pca_results$sdev```.
+
+```{r}
+# get sds of first 2 PCs
+sd <- tibble::enframe(pca_results$sdev)
+sd_PC1 <- as.numeric(sd[1,2])
+sd_PC2 <- as.numeric(sd[2,2])
+```
+
+## Calculating **max** and **min** values
+
+The data visualisation will show the each PC dimensions by adding and subtracting the **variations** (i.e., $SD * loadings$) to/from the **mean** tongue shape, as per Johnson's (2008) formula. The following code calculates these for X and Y coordinates separately. 
+
+```{r}
+# calculate estimated values including sd
+## PC1
+estimate_PC1 <- cbind(mean_pca, PC1_loadings)
+estimate_PC1$PC1_max_X <- estimate_PC1$mean_X + sd_PC1*estimate_PC1$PC1_loadings_X
+estimate_PC1$PC1_min_X <- estimate_PC1$mean_X - sd_PC1*estimate_PC1$PC1_loadings_X
+estimate_PC1$PC1_max_Y <- estimate_PC1$mean_Y + sd_PC1*estimate_PC1$PC1_loadings_Y
+estimate_PC1$PC1_min_Y <- estimate_PC1$mean_Y - sd_PC1*estimate_PC1$PC1_loadings_Y
+
+# calculate estimated values including sd
+## PC2
+estimate_PC2 <- cbind(mean_pca, PC2_loadings)
+estimate_PC2$PC2_max_X <- estimate_PC2$mean_X + sd_PC2*estimate_PC2$PC2_loadings_X
+estimate_PC2$PC2_min_X <- estimate_PC2$mean_X - sd_PC2*estimate_PC2$PC2_loadings_X
+estimate_PC2$PC2_max_Y <- estimate_PC2$mean_Y + sd_PC2*estimate_PC2$PC2_loadings_Y
+estimate_PC2$PC2_min_Y <- estimate_PC2$mean_Y - sd_PC2*estimate_PC2$PC2_loadings_Y
+```
+
+## Data visualisation
+
+Now we are all set! Let's visualise the tongue shape to inspect what articulatory dimensions are captured by each PC. 
+
+```{r  fig.width=10, fig.height=5, message=FALSE, warning=FALSE}
+# PC1
+PC1_reconstructed <- ggplot() +
+  geom_line(data = estimate_PC1, aes(x = mean_X, y = mean_Y), size = 1.5) +
+  geom_line(data = estimate_PC1, aes(x = PC1_max_X, y = PC1_max_Y), linetype = "dashed", linewidth = 1, alpha = 0.5, colour = "#E69F00") +
+  geom_line(data = estimate_PC1, aes(x = PC1_min_X, y = PC1_min_Y), linetype = "dotted", linewidth = 1, alpha = 0.5, colour = "#56B4E9") +
+  geom_point(data = estimate_PC1, aes(x = PC1_max_X, y = PC1_max_Y), shape = 3, size = 3, stroke = 2, colour = "#E69F00") +
+  geom_point(data = estimate_PC1, aes(x = PC1_min_X, y = PC1_min_Y), shape = "\u2212", size = 5, stroke = 8, colour = "#56B4E9") +
+  labs(x = "X", y = "Y", title = "PC1")
+
+# PC2
+PC2_reconstructed <- ggplot() +
+  geom_line(data = estimate_PC2, aes(x = mean_X, y = mean_Y), size = 1.5) +
+  geom_line(data = estimate_PC2, aes(x = PC2_max_X, y = PC2_max_Y), linetype = "dashed", linewidth = 1, alpha = 0.5, colour = "#E69F00") +
+  geom_line(data = estimate_PC2, aes(x = PC2_min_X, y = PC2_min_Y), linetype = "dotted", linewidth = 1, alpha = 0.5, colour = "#56B4E9") +
+  geom_point(data = estimate_PC2, aes(x = PC2_max_X, y = PC2_max_Y), shape = 3, size = 3, stroke = 2, colour = "#E69F00") +
+  geom_point(data = estimate_PC2, aes(x = PC2_min_X, y = PC2_min_Y), shape = "\u2212", size = 5, stroke = 8, colour = "#56B4E9") +
+  labs(x = "X", y = "Y", title = "PC2")
+
+# showing plots
+ggpubr::ggarrange(PC1_reconstructed, PC2_reconstructed, nrow = 1)
+```
+
+So, this is quite similar to Figure 1 of the ICPhS paper: PC1 captures **front-back** movement of the tongue, in which **larger** PC1 values indicate more tongue **fronting**. PC2 captures **high-low** dimension, in which **smaller** PC2 values indicate **higher** tongue shape. 
+
+# Dynamic changes in PC scores
+
+Since the input to the PCA analysis here involves temporal information (i.e., tongue shapes extracted at 11 temporal points during the vowel-liquid-vowel interval), it is possible to infer **dynamic changes in tongue shape** for each production token. We can do so by **tracking changes in PC scores for each PC dimension**. 
 
 ## Extracting PC scores
 
+Let's extract PC scores associated with the PC1 and PC2 dimensions. PC scores are stored in ```pca_results$x```.
+
 ```{r}
+# Check the attributes again
+str(pca_results)
+
 # Get the results of the PCA which are useful
 pc_score <- pca_results$x
 
@@ -326,160 +565,22 @@ pca_result <- dat_pc |>
   dplyr::ungroup()
 ```
 
+## Data wrangling
 
-## Reconstruction
-
-```{r}
-# Mean values from the output of the PCA
-pca_mean <- tibble::enframe(pca_results$center)
-
-## subset data to make into a matrix of x and y values
-pca_mean <- pca_mean |> 
-  dplyr::mutate(
-    axis_mean = str_sub(name, start = 1, end = 1),
-    number_mean = str_sub(name, start = 3, end = -1)
-  ) |> 
-  dplyr::select(-name) |> 
-  dplyr::relocate(axis_mean, number_mean)
-
-mean_X <- pca_mean |> 
-  dplyr::filter(axis_mean == "X") |> 
-  dplyr::rename(mean_X = value,
-                axis_mean_X = axis_mean,
-                number_mean_X = number_mean)
-
-mean_Y <- pca_mean |> 
-  dplyr::filter(axis_mean == "Y") |> 
-  dplyr::rename(mean_Y = value,
-                axis_mean_Y = axis_mean,
-                number_mean_Y = number_mean)
-
-mean_pca <- cbind(mean_X, mean_Y)
-
-## get loadings - eigenvectors
-loadings <- as.table(pca_results$rotation)
-```
-
-## Loadings
-
-### PC1
+We'll transform the data into a long format so that we'll be able to handle it better for data visualisation using ```ggplot2```.
 
 ```{r}
-## get loadings for PC1 in a sensible format
-PC1_loadings <- as.data.frame(loadings) |> 
-  dplyr::filter(Var2 == "PC1")
-
-PC1_loadings <- PC1_loadings |> 
-  dplyr::mutate(
-    axis_loadings = str_sub(Var1, start = 1, end = 1),
-    number_loadings = str_sub(Var1, start = 3, end = -1)
-  )
-
-PC1_loadings_X <- PC1_loadings |> 
-  dplyr::filter(axis_loadings == "X") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
-  dplyr::relocate(axis_loadings, number_loadings) |> 
-  dplyr::rename(PC1_loadings_X = Freq,
-                axis_loadings_X = axis_loadings,
-                number_loadings_X = number_loadings)
-
-PC1_loadings_Y <- PC1_loadings |> 
-  dplyr::filter(axis_loadings == "Y") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
-  dplyr::relocate(axis_loadings, number_loadings) |> 
-  dplyr::rename(PC1_loadings_Y = Freq,
-                axis_loadings_Y = axis_loadings,
-                number_loadings_Y = number_loadings)
-
-PC1_loadings <- cbind(PC1_loadings_X, PC1_loadings_Y)
-```
-
-### PC2
-
-```{r}
-## get loadings for PC2 in a sensible format
-PC2_loadings <- as.data.frame(loadings) |> 
-  dplyr::filter(Var2 == "PC2")
-
-PC2_loadings <- PC2_loadings |> 
-  dplyr::mutate(
-    axis_loadings = str_sub(Var1, start = 1, end = 1),
-    number_loadings = str_sub(Var1, start = 3, end = -1)
-  )
-
-PC2_loadings_X <- PC2_loadings |> 
-  dplyr::filter(axis_loadings == "X") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
-  dplyr::relocate(axis_loadings, number_loadings) |> 
-  dplyr::rename(PC2_loadings_X = Freq,
-                axis_loadings_X = axis_loadings,
-                number_loadings_X = number_loadings)
-
-PC2_loadings_Y <- PC2_loadings |> 
-  dplyr::filter(axis_loadings == "Y") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
-  dplyr::relocate(axis_loadings, number_loadings) |> 
-  dplyr::rename(PC2_loadings_Y = Freq,
-                axis_loadings_Y = axis_loadings,
-                number_loadings_Y = number_loadings)
-
-PC2_loadings <- cbind(PC2_loadings_X, PC2_loadings_Y)
-```
-
-## Data visualisation
-
-```{r  fig.width=10, fig.height=5}
-# get sds of first 3 PCs
-sd <- tibble::enframe(pca_results$sdev)
-sd_PC1 <- as.numeric(sd[1,2])
-sd_PC2 <- as.numeric(sd[2,2])
-
-# calculate estimated values including sd
-## PC1
-estimate_PC1 <- cbind(mean_pca, PC1_loadings)
-estimate_PC1$PC1_max_X <- estimate_PC1$mean_X + sd_PC1*estimate_PC1$PC1_loadings_X
-estimate_PC1$PC1_min_X <- estimate_PC1$mean_X - sd_PC1*estimate_PC1$PC1_loadings_X
-estimate_PC1$PC1_max_Y <- estimate_PC1$mean_Y + sd_PC1*estimate_PC1$PC1_loadings_Y
-estimate_PC1$PC1_min_Y <- estimate_PC1$mean_Y - sd_PC1*estimate_PC1$PC1_loadings_Y
-
-# calculate estimated values including sd
-## PC2
-estimate_PC2 <- cbind(mean_pca, PC2_loadings)
-estimate_PC2$PC2_max_X <- estimate_PC2$mean_X + sd_PC2*estimate_PC2$PC2_loadings_X
-estimate_PC2$PC2_min_X <- estimate_PC2$mean_X - sd_PC2*estimate_PC2$PC2_loadings_X
-estimate_PC2$PC2_max_Y <- estimate_PC2$mean_Y + sd_PC2*estimate_PC2$PC2_loadings_Y
-estimate_PC2$PC2_min_Y <- estimate_PC2$mean_Y - sd_PC2*estimate_PC2$PC2_loadings_Y
-
-# Make figures ------------------------------------------------------------
-# PC1
-PC1_reconstructed <- ggplot() +
-  geom_line(data = estimate_PC1, aes(x = mean_X, y = mean_Y), size = 1.5) +
-  geom_line(data = estimate_PC1, aes(x = PC1_max_X, y = PC1_max_Y), size = 1, linetype = "dashed") +
-  geom_line(data = estimate_PC1, aes(x = PC1_min_X, y = PC1_min_Y), size = 1, linetype = "dotted") +
-  labs(x = "X", y = "Y", title = "PC1")
-
-# PC2
-PC2_reconstructed <- ggplot() +
-  geom_line(data = estimate_PC2, aes(x = mean_X, y = mean_Y), size = 1.5) +
-  geom_line(data = estimate_PC2, aes(x = PC2_max_X, y = PC2_max_Y), size = 1, linetype = "dashed") +
-  geom_line(data = estimate_PC2, aes(x = PC2_min_X, y = PC2_min_Y), size = 1, linetype = "dotted") +
-  labs(x = "X", y = "Y", title = "PC2")
-
-# showing plots
-ggpubr::ggarrange(PC1_reconstructed, PC2_reconstructed, nrow = 1)
-```
-
-# Dynamic changes in PC scores
-
-```{r}
+# converting data frame into long format (and parsing rec_date)
 pca_result_long <- pca_result |> 
   tidyr::pivot_longer(5:26, names_to = c(".value", "point_number"), names_sep = "_") |> 
   dplyr::mutate(
     rec_date = lubridate::parse_date_time(rec_date, c("Ymd HMS","dmY HM"))
   )
 
+# integrate meta data by joining pca_result_long to dat_long
 dat_long <- dplyr::left_join(dat_long, pca_result_long, by = c("speaker", "rec_date", "prompt", "interval", "prop_time", "perc_time", "point_number", "X", "Y"))
 
+# add L1 information
 dat_long <- dat_long |> 
   dplyr::mutate(
     L1 = case_when(
@@ -487,7 +588,17 @@ dat_long <- dat_long |>
       TRUE ~ "Japanese"
     )
   )
+```
 
+## Data visualisation
+
+Let's visualise dynamic changes in PC scores. This is similar to Figures 2 but I've added raw trajectories as well. 
+
+To make the interpretation of PC2 more intuitive, I have flipped the symbol of the PC2z scores so that the positive PC2 values indicate tongue raising.
+
+### PC1 (front-back)
+
+```{r warning=FALSE, message=FALSE}
 # PC1
 dat_long |> 
   ggplot(aes(x = prop_time, y = PC1z)) +
@@ -495,24 +606,676 @@ dat_long |>
   geom_smooth(aes(group = prompt), colour = "white", linewidth = 3.0, alpha = 0.4) +
   geom_smooth(aes(group = prompt, colour = prompt), linewidth = 1.5, alpha = 0.4) +
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1, alpha = 0.4) +
+  annotate("text", x = 1.5, y = -3, label = "← Retraction", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  annotate("text", x = 1.5, y = 4, label = "Fronting →", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
   scale_colour_manual(values = cbPalette) +
   labs(x = "Proportional time (%)", y = "PC1 (z-normalised)", title = "Dynamic changes in PC1") +
   facet_wrap(~ L1)
+```
 
+### PC2 (high-low)
+
+```{r warning=FALSE, message=FALSE}
 # PC2
 dat_long |> 
-  ggplot(aes(x = prop_time, y = PC2z)) +
+  # note the symbol inversion for PC2z
+  ggplot(aes(x = prop_time, y = -PC2z)) +
   geom_line(aes(group = token_id, colour = prompt), alpha = 0.4) +
   geom_smooth(aes(group = prompt), colour = "white", linewidth = 3.0, alpha = 0.4) +
   geom_smooth(aes(group = prompt, colour = prompt), linewidth = 1.5, alpha = 0.4) +
+  annotate("text", x = 1.5, y = -1.5, label = "← Lowering", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  annotate("text", x = 1.5, y = 3, label = "Raising →", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1, alpha = 0.4) +
   scale_colour_manual(values = cbPalette) +
-  labs(x = "Proportional time (%)", y = "PC2 (z-normalised)", title = "Dynamic changes in PC2") +
+  labs(x = "Proportional time (%)", y = "PC2 (z-normalised; inverted)", title = "Dynamic changes in PC2 (inverted)") +
   facet_wrap(~ L1)
 ```
 
 # Statistical analysis
 
-## FPCA
+My ICPhS paper didn't go beyond data visualisation. But we tried both FPCA and GAMMs in the statistics workshop this week, so why don't we try them? I'll try running stats on PC1. 
 
-## GAMMs
+The PCA analysis above compresses the movement of 11 DLC knots into one PC score for a tongue contour at each time point along each PC dimension. This means that we won't need to keep the original data structure anymore, and this will cause some errors when running non-linear stats. So let's subset the data set so that each row corresponds to one PC score at one time point. 
+
+```{r warning=FALSE, message=FALSE}
+dat_sub <- dat_long |> 
+  dplyr::group_by(speaker, L1, rec_date, prompt, interval, prop_time, repetition, token_id) |> 
+  # taking mean() but this shouldn't change the values because PC values are the same for all 11 DLC knots
+  dplyr::summarise(PC1z = mean(PC1z),
+                   PC2z = mean(PC2z)) |> 
+  dplyr::ungroup()
+```
+
+We'll also convert ```prop_time``` into numeric values.
+
+```{r}
+dat_sub$prop_time <- as.numeric(dat_sub$prop_time)
+```
+
+
+Even the subset data frame should enable the same data visualisation -- just as a sanity check:
+
+```{r}
+dat_sub |> 
+  ggplot(aes(x = prop_time, y = PC1z)) +
+  geom_line(aes(group = token_id, colour = prompt), alpha = 0.4) +
+  geom_smooth(aes(group = prompt), colour = "white", linewidth = 3.0, alpha = 0.4) +
+  geom_smooth(aes(group = prompt, colour = prompt), linewidth = 1.5, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1, alpha = 0.4) +
+  annotate("text", x = 1.5, y = -3, label = "← Retraction", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  annotate("text", x = 1.5, y = 4, label = "Fronting →", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  scale_colour_manual(values = cbPalette) +
+  labs(x = "Proportional time (%)", y = "PC1 (z-normalised)", title = "Dynamic changes in PC1") +
+  facet_wrap(~ L1)
+```
+
+Looks good, let's move onto FPCA!
+
+# FPCA
+
+## Creating FPCA input and run FPCA
+
+As we saw earlier in the workshop, we first create FPCA input using ```fdapace::MakeFPCAInputs()```, and then check if the input has an appropriate structure using ```fdapace::CheckData()```. The checking process would spit errors if ```prop_time``` wasn't numeric.
+
+```{r}
+# IDs = token column; tVec = time column; yVec = variable column(s)
+input_dat <- fdapace::MakeFPCAInputs(IDs = dat_sub$token_id, tVec = dat_sub$prop_time, yVec = dat_sub$PC1z)
+
+# Check if there's any issues with the data
+fdapace::CheckData(input_dat$Ly, input_dat$Lt)
+
+# No errors have been returned, so let's now run FPCA 
+dat_dyn_fpca <- fdapace::FPCA(Ly = input_dat$Ly, Lt = input_dat$Lt, optns = list(plot = TRUE))
+```
+The mean function seems to capture the overall pattern, in which tongue achieves maximal retraction earlier in the interval and then shows fronting towards the vowel /i/. 
+
+Let's quickly check what proportion of variance is captured by each FPC.
+
+```{r}
+dat_dyn_fpca$cumFVE
+```
+
+FPC1 captures 52.74% of variance observed in the PC1 trajectories and FPC2 27.58% and FPC3 14.26%. The first three FPCs jointly explain 94.31% of variance. 
+
+## Understanding FPCs
+
+We'll skip the intermediate checking stages and jump straight onto visualising the variation decomposed by each FPC.
+
+```{r}
+# function: get PC scores + return data frame with PCs for each token
+get_pc_scores <- function(fpcaObj){
+  pcs <- data.frame(fpcaObj$xiEst)
+  token <- names(fpcaObj$inputData$Lt) 
+  df <- cbind(token, pcs)
+  n_pcs <- length(fpcaObj$lambda) # get number of PCs
+  pc_names <- paste0("PC", 1:n_pcs) # create colnames for PCs
+  names(df) <- c("token_id", pc_names) # add colnames for token + PCs
+  return(df)
+}
+
+# get PC scores w/ token info
+pc_df <- get_pc_scores(dat_dyn_fpca)
+
+# join PCs (dat) with selected cols from original data frame 
+## store meta info
+meta <- dat_sub |>  
+  dplyr::select(speaker, L1, rec_date, prompt, interval, prop_time, repetition, token_id)
+
+## merge the list and meta data - unique(meta) because otherwise there would be lots of duplicates
+dat <- left_join(pc_df, unique(meta), by = "token_id")
+
+# function: define perturbation function (±Q = ±sd, k = PC number)
+perturbation <- function(fpcaObj, Q, k){
+  Q * sqrt(fpcaObj$lambda[k]) * fpcaObj$phi[,k] + fpcaObj$mu
+}
+
+# function: create perturbation object with mean and ±Q sd as a data frame (for one PC only)
+# can validate against fdapace::GetMeanCurve and fdapace::CreateModeOfVarPlot
+perturbation_object <- function(fpcaObj, Q, k){
+  time <- fpcaObj$workGrid # grid of time values
+  mean <- fpcaObj$mu # mean trajectory
+  Qplus <- perturbation(fpcaObj, Q, k) # +Q sd
+  Qminus <- perturbation(fpcaObj, -Q, k) # -Q sd
+  df <- cbind(time, mean, Qplus, Qminus)
+  colnames(df) <- c("time", "mean", "Qplus", "Qminus")
+  df <- data.frame(df)
+  df$PC <- paste0("PC", k) # add PC colname
+  return(df)
+}
+
+# function: create perturbation data frame with mean and ±Q sd (for all PCs)
+# to do: add ability to pass list of Q values for gradient perturbation function
+get_perturbation <- function(fpcaObj, Q){
+  n_pcs <- length(fpcaObj$lambda)
+  k <- 1:n_pcs
+  df <- lapply(k, perturbation_object, fpcaObj=fpcaObj, Q=Q)
+  df <- dplyr::bind_rows(df) # unnest lists into single df
+  return(df)
+}
+
+# get mean trajectory and ±2 sd for all PCs
+Q <- seq(from = -2, to = 2, by = 0.1)
+pQ <- lapply(Q, get_perturbation, fpcaObj = dat_dyn_fpca) # change fpcaObj appropriately
+names(pQ) <- Q # name pQ lists using value of Q
+pQ <- dplyr::bind_rows(pQ, .id = "Q") # collapse lists together
+pQ$Q <- as.numeric(pQ$Q) # make 'Q' column numeric
+
+# visualise variation along each FPC with mean function
+pQ <- pQ |> 
+  dplyr::filter(PC %in% c('PC1','PC2', 'PC3')) |> 
+  dplyr::mutate(
+    PC = case_when(
+      PC == "PC1" ~ "FPC1",
+      PC == "PC2" ~ "FPC2",
+      PC == "PC3" ~ "FPC3"
+    )
+  ) |> 
+  tidyr::pivot_longer(mean:Qminus, names_to = "Qsd", values_to = "value")
+
+pQ |>
+  ggplot2::ggplot() +
+  aes(x = time, y = value, colour = Q, group = interaction(Q, Qsd)) +
+  geom_path() +
+  geom_line(data = pQ |>  dplyr::filter(Qsd == "mean"), aes(x = time, y = value), colour = "black", size = 1) + 
+  facet_wrap(~ PC, ncol = 2) +
+  scale_colour_gradient2(low = "#E69F00", mid = "#56B4E9", high = "#009E73", midpoint = 0)+
+  labs(x = "Time (normalised)", y = "Reconstructed PC1 trajectories", color = "FPC score")
+```
+
+## Reconstructing original trajectories
+
+Let's reconstruct the first three eigenfunctions.
+
+```{r}
+# mean fPC1 trajectory
+# pc1_mean_curve <- fdapace::GetMeanCurve(Ly = input.PC1$Ly, Lt = input.PC1$Lt, optns = list(plot = TRUE))
+mu_values <- data.frame(dat_dyn_fpca$mu) # mean curve values
+mu_time <- data.frame(dat_dyn_fpca$workGrid) # timepoints used for estimating the curve
+phi <- data.frame(dat_dyn_fpca$phi) # eigenfunction at each timepoint: workGrid * nlambda (e.g., 255 = 51 workGrid * 5 lambda)
+lambda <- data.frame(dat_dyn_fpca$lambda) # PC loadings for each PC: currently 5
+
+# create a data frame containing mean curve, time and eigenfunctions assocaited with each PC at each time point
+## add an extra column 'col_number' as a common index across the data frames - useful when merging everything together later on
+### mean curve
+mu_values <- mu_values |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### sampling time points
+mu_time <- mu_time |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### eigenfunction
+phi <- phi |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+
+### pc loadings
+lambda <- lambda |>  
+  dplyr::mutate(
+    PC = str_c("PC", row_number()),
+    PC = str_c(PC, "lambda", sep = "_")
+  ) |>  
+  tidyr::pivot_wider(names_from = "PC", values_from = "dat_dyn_fpca.lambda") |>  
+  dplyr::slice(rep(1:n(), each = 11)) |>  
+  dplyr::mutate(
+    col_number = row_number()
+  )
+  
+## merging all data together one by one
+rec <- dplyr::left_join(mu_values, mu_time, by = "col_number")
+rec <- dplyr::left_join(rec, phi, by = "col_number")
+rec <- dplyr::left_join(rec, lambda, by = "col_number")
+
+## tidying up some column names
+rec <- rec |>  
+  dplyr::select(col_number, dat_dyn_fpca.workGrid, dat_dyn_fpca.mu, X1, X2, X3, X4, PC1_lambda, PC2_lambda, PC3_lambda, PC4_lambda) |>  
+  dplyr::rename(
+    mean = dat_dyn_fpca.mu,
+    time = dat_dyn_fpca.workGrid,
+    PC1_eigen = X1,
+    PC2_eigen = X2,
+    PC3_eigen = X3,
+    PC4_eigen = X4
+  )
+
+## plotting the eigenfunctions - this should match with a sub-plot in bottom right created with plot(PC1)
+rec |>  
+  ggplot() +
+  # geom_path(aes(x = time, y = mean)) +
+  geom_path(aes(x = time, y = PC1_eigen), colour = "black", linewidth = 1.5) +
+  geom_path(aes(x = time, y = PC2_eigen), colour = "red", linetype = 2, linewidth = 1.5) +
+  geom_path(aes(x = time, y = PC3_eigen), colour = "darkgreen", linetype = 3, linewidth = 1.5) +
+  # geom_path(aes(x = time, y = value, colour = pc)) +
+  geom_hline(yintercept = 0) +
+  labs(x = "time", y = "eigenfunctions", title = "First 3 eigenfunctions")
+
+## check if this matches plot(dat_dyn_fpca)
+plot(dat_dyn_fpca)
+```
+
+## Extracting FPC scores
+
+We'll also extract FPC scores and associate them with the meta data.
+
+```{r}
+# PC scores -> each row is 1 token, each column is one PC
+head(dat_dyn_fpca$xiEst)
+
+# PC scores have already been added to the main data set
+head(dat)
+
+# duplicate each row by 11 times 
+dat_time <- dat |> 
+  dplyr::slice(rep(1:n(), each = 11))
+
+# add col_names to merge with the other data frame
+dat_time <- dat_time |>  
+  dplyr::group_by(token_id) |>  
+  dplyr::mutate(
+    col_number = row_number()
+  ) |>  
+  ungroup()
+
+# merge
+dat_time <- left_join(dat_time, rec, by = "col_number") |> 
+  na.omit()
+```
+
+
+## Data visualisation
+
+### FPC1
+
+```{r warning=FALSE}
+# reconstruct individual trajectory tokens
+dat_time <- dat_time |>  
+  dplyr::mutate(
+    PC1_reconstruct = PC1 * PC1_eigen + mean,
+    PC2_reconstruct = PC2 * PC2_eigen + mean,
+    PC3_reconstruct = PC3 * PC3_eigen + mean,
+    PC4_reconstruct = PC4 * PC4_eigen + mean
+  )
+
+# visualise FPC1
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = PC1_reconstruct, group = token_id, colour = prompt), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "Reconstructed PC1", title = "Reconstructed PC1 teajectories from FPC1") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_wrap(~ L1)
+```
+### FPC2
+
+```{r}
+# visualise FPC2
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = PC2_reconstruct, group = token_id, colour = prompt), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "Reconstructed PC1", title = "Reconstructed PC1 teajectories from FPC2") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_wrap(~ L1)
+```
+
+### FPC3
+
+```{r}
+# visualise FPC3
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = PC3_reconstruct, group = token_id, colour = prompt), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "Reconstructed PC1", title = "Reconstructed PC1 teajectories from FPC3") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_wrap(~ L1)
+```
+
+### Synthesise FPC1, FPC2 and FPC3
+
+OK, so we've managed to understand between-group differences in the first three FPC dimensions. However, the big downside of this PCA+FPCA approach is that we have put the data into **extremely abstract space**. Both PCA and FPCA are data abstraction techniques, and we've applied abstraction over abstraction of the data. 
+
+One solution might be to reconstruct PC trajectories based on **multiple** FPC scores. After all, we are less interested in identifying the modes of variation in articulatory analysis -- rather, we use FPCA primarily as **a shape-to-number converter** so that we can test between-group differences using statistical tests later on. 
+
+Remember that approximately 95% of variance of the data is accounted for by the first three FPCs. This means that, when we sum them up, we can minimise the degree of data loss, as the resulting reconstructed trajectories explain almost all the variance seen in the data.
+
+```{r warning=FALSE}
+# reconstruct individual trajectory tokens
+dat_time <- dat_time |>  
+  dplyr::mutate(
+    joint_PC1_PC2_PC3 = (PC1 * PC1_eigen) + (PC2 * PC2_eigen) + (PC3 * PC3_eigen) + mean
+  )
+
+# visualise FPC1+FPC2+FPC3
+dat_time |>  
+  ggplot() +
+  geom_path(aes(x = time, y = joint_PC1_PC2_PC3, group = token_id, colour = prompt), alpha = 0.2, show.legend = TRUE) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  labs(x = "Proportional Time (%)", y = "Reconstructed PC1", title = "Reconstructed PC1 teajectories from joint FPC1+2+3") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_wrap(~ L1)
+```
+
+The resulting trajectories are rather jaggy -- this is precisely because the use of multiple FPCs pick up smaller variabilities along each PC1 trajectory token. But at the same time, the trajectories still look smoother than the original PC1 trajectories -- see the comparison below.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# original
+PC1_viz <- dat_sub |> 
+  ggplot(aes(x = prop_time, y = PC1z)) +
+  geom_line(aes(group = token_id, colour = prompt), alpha = 0.4) +
+  geom_smooth(aes(group = prompt), colour = "white", linewidth = 3.0, alpha = 0.4) +
+  geom_smooth(aes(group = prompt, colour = prompt), linewidth = 1.5, alpha = 0.4) +
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1, alpha = 0.4) +
+  annotate("text", x = 1.5, y = -3, label = "← Retraction", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  annotate("text", x = 1.5, y = 4, label = "Fronting →", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  scale_colour_manual(values = cbPalette) +
+  labs(x = "Proportional time (%)", y = "PC1 (z-normalised)", title = "Original PC1 trajectories") +
+  facet_wrap(~ L1)
+
+# reconstructed
+joint_FPCs_viz <- dat_time |>  
+  ggplot(aes(x = time, y = joint_PC1_PC2_PC3)) +
+  geom_path(aes(group = token_id, colour = prompt), alpha = 0.4, show.legend = TRUE) +
+  geom_smooth(aes(group = prompt), colour = "white", linewidth = 3.0, alpha = 0.4) +
+  geom_smooth(aes(group = prompt, colour = prompt), linewidth = 1.5, alpha = 0.4) +
+  scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
+  annotate("text", x = 1.5, y = -3, label = "← Retraction", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  annotate("text", x = 1.5, y = 4, label = "Fronting →", hjust = 1, vjust = 0, size = 3, angle = 90, fontface = "bold") +
+  labs(x = "Proportional Time (%)", y = "Reconstructed PC1", title = "Reconstructed PC1 trajectories from joint FPC1+2+3") +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1))) +
+  facet_wrap(~ L1)
+```
+
+
+```{r fig.height=5, fig.width=10, warning=FALSE, message=FALSE}
+# compare with original PC1 trajectories
+ggpubr::ggarrange(PC1_viz, joint_FPCs_viz, common.legend = TRUE, legend = "bottom")
+```
+
+Finally, here's the visualiastion of the joint FPC scores. The data points look quite sparse but this is because FPCA converts each entire trajectory into one number. 
+
+```{r warning=FALSE, message=FALSE}
+colnames(dat_time)
+
+dat_time <- dat_time |> 
+  dplyr::mutate(
+    joint_FPCs = PC1 + PC2 + PC3
+  ) |> 
+  dplyr::group_by(speaker, L1, prompt, interval, rec_date, repetition, token_id) |> 
+  dplyr::summarise(
+    joint_FPCs = unique(joint_FPCs)
+  ) |> 
+  dplyr::ungroup()
+
+dat_time |> 
+  ggplot(aes(x = L1, y = joint_FPCs)) + 
+  geom_jitter(aes(colour = L1), alpha = 0.4) +
+  geom_violin(aes(fill = L1), alpha = 0.4) +
+  geom_boxplot(width = 0.3) +
+  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
+  scale_colour_manual(values = cbPalette) +
+  scale_fill_manual(values = cbPalette) +
+  labs(x = "L1", y = "FPC1 + FPC2 + FPC3", title = "joint FPC values") +
+  facet_wrap( ~ prompt)
+```
+
+
+## Statistical analysis
+
+Now we see that the joint FPC1+2+3 values capture the overall trend in PC1 trajectories quite well, so we can perform statistical analysis. We could simply run linear mixed-effect models here.
+
+### Preparing for LMEs
+
+```{r warning=FALSE, message=FALSE}
+# converting variables into factor
+dat_time <- dat_time |> 
+  dplyr::mutate(
+    L1 = as.factor(L1),
+    speaker = as.factor(speaker),
+    prompt = as.factor(prompt)
+  )
+
+# adding "segment" information
+dat_time <- dat_time |> 
+  dplyr::mutate(
+    segment = case_when(
+      interval == "ili" ~ "/l/",
+      interval == "iri" ~ "/ɹ/",
+      interval == "idi" ~ "/ɾ/"
+    ),
+    segment = as.factor(segment)
+  )
+
+# subset only English words
+dat_time_en <- dat_time |> 
+  dplyr::filter(
+    prompt %in% c("believe", "bereave")
+  ) |> 
+  dplyr::mutate(
+    prompt = droplevels(as.factor(prompt)),
+    segment = droplevels(as.factor(segment))
+  )
+```
+
+### Running a full model
+
+```{r message=FALSE, warning=FALSE} 
+# running model
+m1 <- lme4::lmer(joint_FPCs ~ L1 + segment + L1:segment + (1|speaker), dat = dat_time_en)
+
+# summary
+summary(m1)
+```
+
+### Model comparison for interaction ```L1:segment```
+
+```{r}
+# nested model to test interaction
+m2 <- lme4::lmer(joint_FPCs ~ L1 + segment + (1|speaker), dat = dat_time_en)
+
+# model comparison
+anova(m1, m2, test = "Chisq")
+
+# post-hoc analysis
+emmeans::emmeans(m1, pairwise ~ L1 | segment, adjust = "tukey")
+```
+
+# GAMMs
+
+We can also directly model the PC1 trajectories using GAMMs, as opposed to the FPCA approach where we almost always need a combination with additional statistical tests.
+
+We'll build on the data frame ```dat_sub``` that has omitted the DLC knot information already (as it's irrelevant for our analysis). 
+
+## Defining variables
+
+Let's define the variables of interest. We'll build a model with ```LangSeg``` for the interaction between ```L1``` and ```segment```. 
+
+```{r}
+# check data
+colnames(dat_sub)
+
+# add 'segment', convert variables into factor and create an interaction variable
+dat_sub <- dat_sub |> 
+  dplyr::mutate(
+    segment = case_when(
+      interval == "ili" ~ "/l/",
+      interval == "iri" ~ "/ɹ/",
+      interval == "idi" ~ "/ɾ/"
+    ),
+    segment = as.factor(segment),
+    L1 = as.factor(L1),
+    speaker = as.factor(speaker),
+    prompt = as.factor(prompt),
+    LangSeg = interaction(L1, segment)
+  )
+
+# also make sure that prop_time is numeric
+dat_sub <- dat_sub |> 
+  dplyr::mutate(
+    prop_time = as.numeric(prop_time)
+  )
+```
+
+## Ordered variables
+
+A key preparation before fitting a GAMMs model is to convert the variables into ordered variable to fit difference smooths.
+
+```{r}
+# converting LangCont into ordered variable
+dat_sub$LangSeg.ord <- as.ordered(dat_sub$LangSeg)
+contrasts(dat_sub$LangSeg.ord) <- "contr.treatment" # don't forget this!
+```
+
+## Fitting the first model
+
+```{r warning=FALSE, message=FALSE}
+# fitting a model
+m1 <- mgcv::bam(PC1z ~ LangSeg.ord + s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "fREML")
+
+# summary
+summary(m1)
+```
+
+## Autocorrelation correction
+
+```{r}
+# mark start.event
+## arrange the data appropriately
+dat_sub <- dat_sub |> 
+  dplyr::arrange(token_id, prop_time)
+
+## mark time = 1 (as we express prop_time between 1 and 11)
+dat_sub$start.event <- dat_sub$prop_time == 1
+
+# check residual autocorrelations
+itsadug::acf_resid(m1)
+
+# obtain the autocorrelation at lag 1 as a rho value
+rho_m1 <- start_value_rho(m1) # 0.7551264
+```
+
+## Fitting a model with AR(1) model
+
+```{r warning=FALSE, message=FALSE}
+# fitting a model
+m2 <- mgcv::bam(PC1z ~ LangSeg.ord + s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "fREML", rho = rho_m1, AR.start = dat_sub$start.event)
+
+# summary
+summary(m2)
+
+# check residual autocorrelations -- looks fairly good
+itsadug::acf_resid(m2)
+```
+
+## Model comparison
+
+### Shape + height difference
+
+```{r warning=FALSE, message=FALSE}
+# full model with ML
+m2 <- mgcv::bam(PC1z ~ LangSeg.ord + s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
+
+# nested model without parametric or smooth terms assocaited with LangSeg
+m3 <- mgcv::bam(PC1z ~ s(prop_time), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
+  
+# model comparison
+itsadug::compareML(m2, m3, suggest.report = TRUE)
+```
+
+### Shape difference
+
+```{r warning=FALSE, message=FALSE}
+# full model with ML
+m2 <- mgcv::bam(PC1z ~ LangSeg.ord + s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
+
+# nested model only with smooth term for LangSeg
+m4 <- mgcv::bam(PC1z ~ s(prop_time) + s(prop_time, by = LangSeg.ord) + s(prop_time, speaker, bs = "fs", m = 1), data = dat_sub, method = "ML", rho = rho_m1, AR.start = dat_sub$start.event)
+
+# model comparison
+itsadug::compareML(m2, m4, suggest.report = TRUE)
+```
+
+## Data visualisation
+
+### separate smooths using ```itsadug```
+
+Let's check if the PC1 trajectories are modelled accurately. We'll first check the separate smooths for each liquid segment, which seems to suggest that the modelling looks good.
+
+```{r warning=FALSE, message=FALSE}
+# separate smooths 1
+## English
+plot_smooth(m2, view = "prop_time", plot_all = "LangSeg.ord", cond = list(LangSeg.ord = c("English./l/", "English./ɹ/")))
+
+## Japanese
+plot_smooth(m2, view = "prop_time", plot_all = "LangSeg.ord", cond = list(LangSeg.ord = c("Japanese./l/", "Japanese./ɹ/", "Japanese./ɾ/")))
+```
+
+For comparison, here is the raw PC1 trajectories:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+PC1_viz
+```
+
+### separate and difference smooths using ```itsadug```
+
+Now let's check how L1 English and L1 Japanese speakers differ in the patterns of their PC1 trajectoties. We'll visualise separate by-group smooths for each liquid segment first, followed by difference smooths encoding the by-group differences.
+
+```{r warning=FALSE, message=FALSE}
+# English /l/
+## separate smooths
+plot_smooth(m2, view = "prop_time", plot_all = "LangSeg.ord", cond = list(LangSeg.ord = c("English./l/", "Japanese./l/")))
+
+## difference smooth
+plot_diff(m2, view = "prop_time", comp = list(LangSeg.ord = c("English./l/", "Japanese./l/")), print.summary = FALSE, main = "Japanese-English difference for /l/")
+
+# English /ɹ/
+## separate smooths
+plot_smooth(m2, view = "prop_time", plot_all = "LangSeg.ord", cond = list(LangSeg.ord = c("English./ɹ/", "Japanese./ɹ/")))
+
+## difference smooth
+plot_diff(m2, view = "prop_time", comp = list(LangSeg.ord = c("English./ɹ/", "Japanese./ɹ/")), print.summary = FALSE, main = "Japanese-English difference for /ɹ/")
+```
+
+### ```tidygam``` approach
+
+We can also visualise the GAMMs results more neatly using ```tidygam```.
+
+```{r warning=FALSE, message=FALSE}
+# inspect gams
+m2_preds <- tidygam::predict_gam(m2, exclude_terms = "s(prop_time,speaker)")
+
+# show prediction
+m2_preds
+
+# separate two main effects
+m2_preds_2 <- tidygam::predict_gam(
+  m2,
+  length_out = 25,
+  exclude_terms = "s(prop_time,speaker)",
+  separate = list(LangSeg.ord = c("L1", "segment"))
+)
+
+# get gamm prediction
+m2_preds_2 |>
+  plot(series = "prop_time", comparison = "segment") +
+  scale_colour_manual(values = cbPalette) +
+  scale_fill_manual(values = cbPalette) +
+  facet_grid(cols = vars(L1))
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
