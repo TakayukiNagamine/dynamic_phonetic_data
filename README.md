@@ -42,7 +42,7 @@ Here is the URL for the online supplementary materials deposited on the followin
 
 Some members of the audience will continue onto Day 3 for a brief workshop on ultrasound tongue imaging. This repository contains some materials for this -- see the day 3 HTML/Rmd documents.
 
-The aim of the ultrasound workshop is to casually opportunities to discuss ultrasound data collection/analysis methods. We may not be able to discuss the workshop materials much, but they contain an extension of my own research (see below for citation) in which I have analysed the dynamic changes in tongue shape using FPCA and GAMMs. 
+The aim of the ultrasound workshop is to casually discuss ultrasound data collection/analysis methods. We may not be able to discuss the workshop materials much, but I've prapared a document containing an extension of my own research (see below for citation) in which I have analysed the dynamic changes in tongue shape using FPCA and GAMMs. 
 
 Nagamine, T. (2023). Dynamic tongue movements in L1 Japanese and L2 English liquids. In R. Skarnitzl & J. Volín (Eds.), Proceedings of the 20th International Congress of Phonetic Sciences (pp. 2442–2446). Guarant International. https://discovery.ucl.ac.uk/id/eprint/10198625
 
