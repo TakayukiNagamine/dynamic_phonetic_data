@@ -48,5 +48,5 @@ Nagamine, T. (2023). Dynamic tongue movements in L1 Japanese and L2 English liqu
 
 # Acknowledgements
 
-The workshop is organised by Dr Yuka Naito and Professor Chiara Meluzzi and by [the AKiD project: Acoustic and Kinematic Characteristics of Speech in Dementia](https://site.unibo.it/akid/en), a joint research project spanning the University of Bologna, IRCSS Istituto delle Scienze Neurologiche di Bologna, and University of Milan.
+The workshop is organised mainly by Dr Yuka Naito and Professor Chiara Meluzzi and by [the AKiD project: Acoustic and Kinematic Characteristics of Speech in Dementia](https://site.unibo.it/akid/en), a joint research project spanning the University of Bologna, IRCSS Istituto delle Scienze Neurologiche di Bologna, and University of Milan.
 
