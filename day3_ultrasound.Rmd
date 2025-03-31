@@ -898,7 +898,9 @@ dat_time <- left_join(dat_time, rec, by = "col_number") |>
 
 ## Data visualisation
 
-### FPC1
+
+### FPC1
+
 
 ```{r warning=FALSE}
 # reconstruct individual trajectory tokens
@@ -920,7 +922,10 @@ dat_time |>
   guides(colour = guide_legend(override.aes = list(alpha = 1))) +
   facet_wrap(~ L1)
 ```
-### FPC2
+
+
+### FPC2
+
 
 ```{r}
 # visualise FPC2
@@ -1011,37 +1016,9 @@ joint_FPCs_viz <- dat_time |>
 ggpubr::ggarrange(PC1_viz, joint_FPCs_viz, common.legend = TRUE, legend = "bottom")
 ```
 
-Finally, here's the visualiastion of the joint FPC scores. The data points look quite sparse but this is because FPCA converts each entire trajectory into one number. 
-
-```{r warning=FALSE, message=FALSE}
-colnames(dat_time)
-
-dat_time <- dat_time |> 
-  dplyr::mutate(
-    joint_FPCs = PC1 + PC2 + PC3
-  ) |> 
-  dplyr::group_by(speaker, L1, prompt, interval, rec_date, repetition, token_id) |> 
-  dplyr::summarise(
-    joint_FPCs = unique(joint_FPCs)
-  ) |> 
-  dplyr::ungroup()
-
-dat_time |> 
-  ggplot(aes(x = L1, y = joint_FPCs)) + 
-  geom_jitter(aes(colour = L1), alpha = 0.4) +
-  geom_violin(aes(fill = L1), alpha = 0.4) +
-  geom_boxplot(width = 0.3) +
-  geom_hline(yintercept = 0, linetype = 1, linewidth = 0.1) +
-  scale_colour_manual(values = cbPalette) +
-  scale_fill_manual(values = cbPalette) +
-  labs(x = "L1", y = "FPC1 + FPC2 + FPC3", title = "joint FPC values") +
-  facet_wrap( ~ prompt)
-```
-
-
 ## Statistical analysis
 
-Now we see that the joint FPC1+2+3 values capture the overall trend in PC1 trajectories quite well, so we can perform statistical analysis. We could simply run linear mixed-effect models here.
+Let's run linear mixed-effect models on the FPC1 here.
 
 ### Preparing for LMEs
 
@@ -1080,7 +1057,7 @@ dat_time_en <- dat_time |>
 
 ```{r message=FALSE, warning=FALSE} 
 # running model
-m1 <- lme4::lmer(joint_FPCs ~ L1 + segment + L1:segment + (1|speaker), dat = dat_time_en)
+m1 <- lme4::lmer(PC1 ~ L1 + segment + L1:segment + (1|speaker), dat = dat_time_en)
 
 # summary
 summary(m1)
@@ -1090,7 +1067,7 @@ summary(m1)
 
 ```{r}
 # nested model to test interaction
-m2 <- lme4::lmer(joint_FPCs ~ L1 + segment + (1|speaker), dat = dat_time_en)
+m2 <- lme4::lmer(PC1 ~ L1 + segment + (1|speaker), dat = dat_time_en)
 
 # model comparison
 anova(m1, m2, test = "Chisq")
