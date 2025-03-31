@@ -742,6 +742,8 @@ m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = langua
 
 ## Random effects
 
+### Factor smooths
+
 You might notice that we have modelled non-linear change of ```f2z``` over time with fixed effects only, and we have ignored by-speaker and by-item random effects. This is where the difference between GAM and GAMM comes in: Generalised Additive Mixed Effect Models, as the name suggests, can also incorporate random effects!
 
 There are various ways to incorporate random effects, but here, we stick to one of them, which is based on **factor smooths**. 
@@ -764,6 +766,34 @@ And this is what by-speaker factor smooths looks like:
 
 ```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
 itsadug::inspect_random(m5, select = 5, lwd = 3, main = "random smooths by speaker")
+```
+
+
+### Confidence intervals
+
+Adding random effects result in wider confidence intervals as a result of allowing variability arising from random effects. In other words, models without random effects have narrower confidence intervals than is necessary, which might lead to the Type I error (i.e., detecting statistical significance when there shouldn't be).
+
+Here is a comparison of separate smooths between ```m4``` and ```m5```.
+
+```{r}
+# m4: model without factor smooths
+# m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
+
+itsadug::plot_smooth(m4, view = "time", plot_all = "language.ord", cond = list(context.ord = "/æ/"))
+
+# m5: model with factor smooths
+# m5 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord) + s(time, speaker, bs = "fs", m = 1), data = df_dyn_L, method = "fREML")
+
+itsadug::plot_smooth(m5, view = "time", plot_all = "language.ord", cond = list(context.ord = "/æ/"))
+```
+
+It seems that the confidence interval also becomes wider in difference smooths for ```m5``` that includes the factor smooths:
+
+```{r}
+### difference smooth
+itsadug::plot_diff(m4, view = "time", comp = list(language.ord = c("Japanese", "English")), cond = list(context.ord = "/æ/"), print.summary = FALSE, main = "Japanese-English difference in the /æ/ context")
+
+itsadug::plot_diff(m5, view = "time", comp = list(language.ord = c("Japanese", "English")), cond = list(context.ord = "/æ/"), print.summary = FALSE, main = "Japanese-English difference in the /æ/ context")
 ```
 
 ### Your turn
@@ -907,9 +937,11 @@ plot_smooth(m7, view = "time", plot_all = "language.ord", cond = list(context.or
 ### difference smooth
 plot_diff(m7, view = "time", comp = list(language.ord = c("Japanese", "English")), cond = list(context.ord = "/æ/"), print.summary = FALSE, main = "Japanese-English difference in the /æ/ context")
 ```
+
+
 ### Your turn
 
-Could you write a code chunk to visualise (1) separate and (2) difference smooths between L1 English and L1 Japanese spaekers in the /i/ and /u/ contexts?
+Could you write a code chunk to visualise (1) separate and (2) difference smooths between L1 English and L1 Japanese speakers in the /i/ and /u/ contexts?
 
 ```{r}
 # visualisation
