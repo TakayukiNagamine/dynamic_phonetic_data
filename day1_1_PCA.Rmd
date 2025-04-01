@@ -843,6 +843,8 @@ ggpubr::ggarrange(p1, p2)
 
 Let's apply PCA on the formant data. We'll classify the tokens based on the z-scored F1, F2 and F3. We use the ```prcomp()``` function to perform PCA.
 
+In the ```prcomp()``` function, there is a ```scale``` argument, and it is generally recommended that you set this into ```scale = TRUE```. This influences not only the unit standardisation of the variables but also the internal computational methods for PCA. Since we deal with z-score normalised measures, this does not look like a big difference on the surface though. 
+
 ```{r}
 # rearrange column order for easier data subsetting
 df_mid <- df_mid |> 
@@ -852,7 +854,7 @@ df_mid <- df_mid |>
 colnames(df_mid)
 
 # PCA on F1z, F2z, F3z and duration
-pca_mid <- prcomp(dplyr::select(df_mid, 1:4))
+pca_mid <- prcomp(dplyr::select(df_mid, 1:4), scale = TRUE)
 
 # check summary
 summary(pca_mid)
@@ -868,9 +870,10 @@ $$
 pca\_var\_exp = \frac{(\text{sdev})^2}{\sum pca\_var}
 $$
 
-- **Cumulative Proportion**: This simply shows the sum of the proportion of variance explained by each PC. For instance, PC1 explains 32.76% of variance whereas PC2 26.92%. The cumulative proportion of PC1 and PC2 is thus 59.68% (i.e., 32.76% + 26.92%).
+- **Cumulative Proportion**: This simply shows the sum of the proportion of variance explained by each PC. For instance, PC1 explains 33.24% of variance whereas PC2 27.62%. The cumulative proportion of PC1 and PC2 is thus 60.86% (i.e., 33.24% + 27.62%).
 
 Another important index in PCA is **eigenvalues**, which represent **how much variance is explained by each principal component (PC)**. The standard deviation of a PC is the square root of its eigenvalue, meaning that eigenvalues are the squared standard deviations of the PCs. The proportion of variance explained by a given PC is calculated by dividing its eigenvalue by the sum of all eigenvalues.
+
 
 ```{r}
 # calculate eigenvalues
@@ -895,13 +898,14 @@ Let's also look into the inside of ```pca_mid```.
 pca_mid
 ```
 
-The top line shows **standard deviation**, which we just saw earlier, so let's skip this for now. 
 
-At the bottom, we have **loadings matrix**. This shows **eigenvectors**: i.e., the **amount** and (2) the **direction** of the contribution that the original data dimensions make to each PC. Let's disentangle this one by one:
+The top line shows **standard deviation**, which reflects the amount of variance explained by each principal component (PC). Let's skip this for now.
+
+At the bottom, we have the **loadings matrix**, which shows the **eigenvectors**. (The name is confusing but this is how I understood.) These **eigenvectors** represent the direction and weight of each original variable's contribution to each principal component. The components of the eigenvectors (also known as **loadings**) give us a sense of how each variable is related to the PCs. Let's break this down further:
 
 - **PC1**: Contributions of ```f1z```, ```f2z```, ```f3z``` and ```duration``` are all in the same direction (i.e., positive). But the amount of contribution is fairly small for ```f1z``` and ```duration``` compared to ```f2z``` and ```f3z```. 
 
-- **PC2**: In contrast to PC1, ```f1z``` contributes to PC2 to a greater extent than ```f2z``` and ```f3z```. ```duration``` also seems to make a big contribution here but in the opposite direction (i.e., negative).
+- **PC2**: In contrast to PC1, ```f1z``` contributes to PC2 to a greater extent than ```f2z``` and ```f3z```. ```duration``` also seems to make a big contribution here but in the opposite direction (i.e., negative). This suggests that, the larger PC2 is, the higher F1 but the shorter the duration. 
 
 - **PC3**: The contribution of ```duration``` seems quite big here, too. 
 
@@ -968,7 +972,7 @@ Since there are only three PCs identified from the data, it doesn't make much se
 
 The interpretation of loading matrix was more or less straightforward in this case given that only three parameters were involved. It is easy to see, however, that this can get quite complicated when the original data have a greater number of dimensions. 
 
-**Biplots** help us better understand the loadings and PC scores for each observation. For example, the default function ```biplot()``` plots all observations along the PC1 and PC2 dimensions with **eigenvectors** shown in red arrows (i.e., the direction and the amount of weighting: also called **loadings**). 
+**Biplots** help us better understand the loadings and PC scores for each observation. For example, the default function ```biplot()``` plots all observations along the PC1 and PC2 dimensions with the direction and the amount of weighting in red arrows -- **loadings** (as far as I understand). 
 
 ```{r}
 # default function for biplot
@@ -987,7 +991,7 @@ pca_scores <- as.data.frame(pca_mid$x)
 pca_loadings <- as.data.frame(pca_mid$rotation)
 
 # Combine scores into one data frame for plotting
-scores_df <- cbind(pca_scores, df_mid[, c("segment", "language", "vowel")])
+scores_df <- cbind(pca_scores, df_mid[, c("segment", "speaker", "language", "vowel")])
 
 # Reshape the loadings for visualization
 loadings_df <- pca_loadings |> 
