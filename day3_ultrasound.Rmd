@@ -294,7 +294,7 @@ The PCA analysis below suggests that PC1 captures 58.03% of the variance observe
 
 ```{r}
 # perform PCA
-pca_results <- prcomp(dplyr::select(dat, 5:26), scale = FALSE)
+pca_results <- prcomp(dplyr::select(dat, 5:26), scale = TRUE)
 
 # summary
 summary(pca_results)
@@ -390,8 +390,10 @@ mean_Y <- pca_mean |>
 # combine X and Y values together
 mean_pca <- cbind(mean_X, mean_Y)
 
-## get loadings - eigenvectors
-loadings <- as.table(pca_results$rotation)
+# get loadings: calculate from eigenvectors (obtained from pca_results$rotation)
+## loadings = eigenvectors * sqrt(eigenvalues)
+## sqrt(eigenvalues) = standard deviation
+loadings <- pca_results$rotation %*% diag(pca_results$sdev)
 ```
 
 ## Loadings
@@ -405,32 +407,39 @@ Here is the code to gather necessary information for PC1.
 ```{r}
 # get loadings for PC1 in a sensible format
 PC1_loadings <- as.data.frame(loadings) |> 
-  dplyr::filter(Var2 == "PC1")
+  dplyr::select(V1)
+
+# rename the first column (which wasn't a column really)
+## manually convert the first column into a proper column
+PC1_loadings <- data.frame(Label = rownames(PC1_loadings), PC1_loadings, row.names = NULL)
+## rename
+colnames(PC1_loadings)[1] <- "DLC_knot" 
 
 # separate axis and number for each DLC knot 
 PC1_loadings <- PC1_loadings |> 
   dplyr::mutate(
-    axis_loadings = str_sub(Var1, start = 1, end = 1),
-    number_loadings = str_sub(Var1, start = 3, end = -1)
+    axis_loadings = str_sub(DLC_knot, start = 1, end = 1),
+    number_loadings = str_sub(DLC_knot, start = 3, end = -1)
   )
 
 ## separating X coordinates
 PC1_loadings_X <- PC1_loadings |> 
   dplyr::filter(axis_loadings == "X") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::select(-DLC_knot) |> 
   dplyr::relocate(axis_loadings, number_loadings) |> 
   # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
-  dplyr::rename(PC1_loadings_X = Freq,
+  dplyr::rename(PC1_loadings_X = V1,
                 axis_loadings_X = axis_loadings,
                 number_loadings_X = number_loadings)
 
 ## separating Y coordinates
 PC1_loadings_Y <- PC1_loadings |> 
   dplyr::filter(axis_loadings == "Y") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::select(-DLC_knot) |> 
   dplyr::relocate(axis_loadings, number_loadings) |> 
   # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
-  dplyr::rename(PC1_loadings_Y = Freq,
+  dplyr::rename(PC1_loadings_Y = V1,
+                # PC1_loadings_X = Freq,
                 axis_loadings_Y = axis_loadings,
                 number_loadings_Y = number_loadings)
 
@@ -443,34 +452,41 @@ PC1_loadings <- cbind(PC1_loadings_X, PC1_loadings_Y)
 The same for PC2.
 
 ```{r}
-## get loadings for PC2 in a sensible format
+# get loadings for PC2 in a sensible format
 PC2_loadings <- as.data.frame(loadings) |> 
-  dplyr::filter(Var2 == "PC2")
+  dplyr::select(V2)
+
+# rename the first column (which wasn't a column really)
+## manually convert the first column into a proper column
+PC2_loadings <- data.frame(Label = rownames(PC2_loadings), PC2_loadings, row.names = NULL)
+## rename
+colnames(PC2_loadings)[1] <- "DLC_knot" 
 
 # separate axis and number for each DLC knot 
 PC2_loadings <- PC2_loadings |> 
   dplyr::mutate(
-    axis_loadings = str_sub(Var1, start = 1, end = 1),
-    number_loadings = str_sub(Var1, start = 3, end = -1)
+    axis_loadings = str_sub(DLC_knot, start = 1, end = 1),
+    number_loadings = str_sub(DLC_knot, start = 3, end = -1)
   )
 
 ## separating X coordinates
 PC2_loadings_X <- PC2_loadings |> 
   dplyr::filter(axis_loadings == "X") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::select(-DLC_knot) |> 
   dplyr::relocate(axis_loadings, number_loadings) |> 
   # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
-  dplyr::rename(PC2_loadings_X = Freq,
+  dplyr::rename(PC2_loadings_X = V2,
                 axis_loadings_X = axis_loadings,
                 number_loadings_X = number_loadings)
 
 ## separating Y coordinates
 PC2_loadings_Y <- PC2_loadings |> 
   dplyr::filter(axis_loadings == "Y") |> 
-  dplyr::select(-c(Var1, Var2)) |> 
+  dplyr::select(-DLC_knot) |> 
   dplyr::relocate(axis_loadings, number_loadings) |> 
   # raname variables -- we'll combine everything later but R doesn't allow multiple columns to have identical names
-  dplyr::rename(PC2_loadings_Y = Freq,
+  dplyr::rename(PC2_loadings_Y = V2,
+                # PC2_loadings_X = Freq,
                 axis_loadings_Y = axis_loadings,
                 number_loadings_Y = number_loadings)
 
