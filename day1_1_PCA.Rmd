@@ -11,6 +11,17 @@ output:
 ---
 
 ```{r include=FALSE}
+install.packages("rmdformats")
+install.packages("ggpubr")
+install.packages("knitr")
+install.packages("tidyverse")
+install.packages("lme4")
+install.packages("lme4Test")
+install.packages("emmeans")
+```
+
+
+```{r include=FALSE}
 library(rmdformats)
 library(tidyverse)
 
@@ -226,7 +237,6 @@ ggplot(data_sd, aes(x = Value, fill = Standard_Deviation)) +
        x = "Value",
        y = "Density",
        fill = "Standard Deviation")
-
 ```
 
 ## Linear vs non-linear data
@@ -277,7 +287,7 @@ ggplot(data, aes(x = x)) +
 
 ## Data visualisation: scatter, box and violin plots
 
-Finally, let's take a quick look at data visualisation methods. I consider that data visualisation is the pivot in data analysis, and a great data analysis is facilitated by effecive data visualiastion. It is also a means to communicate the research findings with the audience. 
+Finally, let's take a quick look at data visualisation methods. I consider that data visualisation is the pivot in data analysis, and a great data analysis is facilitated by effective data visualiastion. It is also a means to communicate the research findings with the audience. 
 
 Effective data visualisation often combines multiple types of plots. In my usual practice, I often combine three types of plots: **scatter**, **box** and **violin** plots.
 
@@ -408,9 +418,9 @@ Let's first install and load R packages that we are using in the static analysis
 
 # importing
 library(tidyverse)
-library(lme4)
-library(lmerTest)
-library(emmeans)
+# library(lme4)
+# library(lmerTest)
+# library(emmeans)
 ```
 
 
@@ -421,6 +431,12 @@ Let's import the data set. We are using the data set openly available on the Ope
 ```{r message=FALSE}
 # import the csv file "initial.liquid.static.csv" from the "data" directory and save it as "df_mid"
 df_mid <- readr::read_csv("data/initial.liquid.static.csv")
+
+# whole data set
+View(df_mid)
+
+# partial view
+df_mid
 ```
 
 # Checking data
@@ -502,6 +518,9 @@ The codes above show that the data set only contains liquid tokens that are clas
 # Remove columns 
 df_mid <- df_mid |> 
   dplyr::select(-c(IsApproximant, IsAcoustic, omit))
+
+df_mid <- df_mid |> 
+  dplyr::select(-position)
 ```
 
 ### Your turn
@@ -510,7 +529,7 @@ Please write a code below to check the updated column names:
 
 ```{r}
 # Check column names again
-# ...
+colnames(df_mid)
 ```
 
 ## Renaming variables
@@ -520,6 +539,13 @@ Later on in this workshop, we will be modelling the formant frequencies as a fun
 Also, we will also convert the ARPABET notations into the IPA symbols. 
 
 ```{r}
+# check next_sound
+df_mid |> 
+  dplyr::group_by(next_sound) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
+
+# 'recoding' using mutate
 df_mid <- df_mid |> 
   dplyr::mutate(
     vowel = case_when(
@@ -528,6 +554,12 @@ df_mid <- df_mid |>
       next_sound == "UW1" ~ "/u/",
     )
   )
+
+# check the resulted 'vowel' column
+df_mid |> 
+  dplyr::group_by(vowel) |> 
+  dplyr::summarise() |> 
+  dplyr::ungroup()
 ```
 
 
@@ -542,6 +574,9 @@ df_mid |>
   dplyr::summarise(n = n_distinct(speaker)) |> 
   dplyr::ungroup()
 
+# command/ctrl + shift + m
+# |> 
+  
 # number of tokens per segment
 df_mid |> 
   dplyr::group_by(segment) |> 
@@ -557,7 +592,12 @@ You can start with checking the column names to see what variables are available
 
 ```{r}
 # Check data further
-# ...
+df_mid |> 
+  dplyr::group_by(language, segment, vowel) |> 
+  dplyr::summarise(n = n()) |> 
+  dplyr::ungroup()
+
+?n_distinct
 ```
 
 
@@ -577,9 +617,10 @@ Let's create ```f1z```, ```f2z``` and ```f3z``` columns using the ```dplyr::muta
 df_mid <- df_mid |> 
   dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
   dplyr::mutate(
-    f1z = as.numeric(scale(f1)), # scale f1 into z-score
-    f2z = as.numeric(scale(f2)), # scale f2 into z-score
-    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+    # f1z = scale(f1), # scale f1 into z-score
+    f1z = scale(as.numeric(f1)),
+    f2z = scale(f2), # scale f2 into z-score
+    f3z = scale(f3)# scale f3 into z-score
   ) |> 
   dplyr::ungroup() # don't forget ungrouping
 ```
@@ -605,10 +646,26 @@ Write a code chunk to inspect the mean and sd of raw/scaled F2 and F3 values for
 
 ```{r}
 # check mean and sd of raw/scaled F2 values for each speaker group
-# ...
+df_mid |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f2_mean = mean(f2),
+    f2_sd = sd(f2),
+    f2z_mean = mean(f2z),
+    f2z_sd = sd(f2z)
+  ) |> 
+  dplyr::ungroup() 
 
 # check mean and sd of raw/scaled F3 values for each speaker group
-# ...
+df_mid |> 
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    f3_mean = mean(f3),
+    f3_sd = sd(f3),
+    f3z_mean = mean(f3z),
+    f3z_sd = sd(f3z)
+  ) |> 
+  dplyr::ungroup() 
 ```
 
 ## Visualisation: Spectral characteristics
@@ -627,18 +684,18 @@ df_mid |>
   geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
   # superimposing violin plot on scatter plot
   geom_violin(alpha = 0.4) +
-  # superimposing boxplot on scatter/violin plots
+  # # superimposing boxplot on scatter/violin plots
   geom_boxplot(width = 0.4, alpha = 0.4) +
-  # drawing a horizontal line at y = 0 to facilitate interpretation
+  # # drawing a horizontal line at y = 0 to facilitate interpretation
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
-  # define colour scheme
+  # # define colour scheme
   scale_colour_manual(values = cbPalette) + 
-  # define limits on the y-axis
+  # # define limits on the y-axis
   ylim(c(-4, 4)) +
-  # split the plot according to the ``segment`` and ``vowel`` variables
+  # # split the plot according to the ``segment`` and ``vowel`` variables
   facet_grid(segment ~ vowel) +
-  # define axis and main labels
-  labs(x = "L1", y = "F1 (z-normalised)", title = "F1 frequency") +
+  # # define axis and main labels
+  # labs(x = "L1", y = "F1 (z-normalised)", title = "F1 frequency") +
   # adjust the label on the y-axis to make it look better
   theme(strip.text.y = element_text(angle = 0))
 ```
@@ -649,10 +706,58 @@ Could you try visualising ```f2z``` and ```f3z```?
 
 ```{r}
 # F2
-# df_mid |> ...
- 
+df_mid |> 
+  # define x- and y-axis
+  ggplot(aes(x = language, y = f2z)) +
+  # scatter plot
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  # superimposing violin plot on scatter plot
+  geom_violin(alpha = 0.4) +
+  # # superimposing boxplot on scatter/violin plots
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  # # drawing a horizontal line at y = 0 to facilitate interpretation
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  # # define colour scheme
+  scale_colour_manual(values = cbPalette) + 
+  # # define limits on the y-axis
+  # ylim(c(-4, 4)) +
+  # # split the plot according to the ``segment`` and ``vowel`` variables
+  facet_grid(segment ~ vowel) +
+  # # define axis and main labels
+  labs(x = "L1", y = "F2 (z-normalised)", title = "F2 frequency") +
+  # adjust the label on the y-axis to make it look better
+  theme(strip.text.y = element_text(angle = 0))
+
 # F3
-# df_mid |> ...
+df_mid |> 
+  # define x- and y-axis
+  ggplot(aes(x = language, y = f3z)) +
+  # scatter plot
+  geom_jitter(aes(colour = language), width = 0.3, alpha = 0.4) +
+  # superimposing violin plot on scatter plot
+  geom_violin(alpha = 0.4) +
+  # # superimposing boxplot on scatter/violin plots
+  geom_boxplot(width = 0.4, alpha = 0.4) +
+  # # drawing a horizontal line at y = 0 to facilitate interpretation
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5) +
+  # # define colour scheme
+  scale_colour_manual(values = cbPalette) + 
+  # # define limits on the y-axis
+  # ylim(c(-4, 4)) +
+  # # split the plot according to the ``segment`` and ``vowel`` variables
+  facet_grid(segment ~ vowel) +
+  # # define axis and main labels
+  labs(x = "L1", y = "F3 (z-normalised)", title = "F3 frequency") +
+  # adjust the label on the y-axis to make it look better
+  theme(strip.text.y = element_text(angle = 0))
+
+df_mid |>
+  ggplot(aes(x=segment,y=f2z)) +
+  geom_jitter(aes(colour=language), width=0.3, alpha=0.4) +
+  geom_violin(alpha = 0.4) +
+  facet_grid(rows = vars(vowel), cols = vars(language)) +
+  scale_colour_manual(values = c("#7f0000","#00007f")) +
+  labs(y="Second Formant, Normalized")
 ```
 
 Overall, the data visualisation so far seems to suggest:
@@ -671,7 +776,7 @@ Data visualisation is a crucial aspect in data analysis and in open data science
 
 Explore different ways to visualise the F1, F2 and F3 values. For example, you could:
 
-- throw different variables in the ```facet_wrap()``` command
+- throw different variables in the ```facet_grid()``` command
 
 - plot raw F1, F2 and F3 values (i.e., simply typing ```f1``` instead of ```f1z```) to see how the two plots compare
 
@@ -854,7 +959,9 @@ df_mid <- df_mid |>
 colnames(df_mid)
 
 # PCA on F1z, F2z, F3z and duration
-pca_mid <- prcomp(dplyr::select(df_mid, 1:4), scale = TRUE)
+pca_mid <- prcomp(dplyr::select(df_mid, 1:4), scale = FALSE)
+
+pca_mid_true <- prcomp(dplyr::select(df_mid, 1:4), scale = TRUE)
 
 # check summary
 summary(pca_mid)
@@ -873,7 +980,6 @@ $$
 - **Cumulative Proportion**: This simply shows the sum of the proportion of variance explained by each PC. For instance, PC1 explains 33.24% of variance whereas PC2 27.62%. The cumulative proportion of PC1 and PC2 is thus 60.86% (i.e., 33.24% + 27.62%).
 
 Another important index in PCA is **eigenvalues**, which represent **how much variance is explained by each principal component (PC)**. The standard deviation of a PC is the square root of its eigenvalue, meaning that eigenvalues are the squared standard deviations of the PCs. The proportion of variance explained by a given PC is calculated by dividing its eigenvalue by the sum of all eigenvalues.
-
 
 ```{r}
 # calculate eigenvalues
@@ -896,8 +1002,9 @@ Let's also look into the inside of ```pca_mid```.
 ```{r}
 # show the PCA results
 pca_mid
-```
 
+pca_mid_true
+```
 
 The top line shows **standard deviation**, which reflects the amount of variance explained by each principal component (PC). Let's skip this for now.
 

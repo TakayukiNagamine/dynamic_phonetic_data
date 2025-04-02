@@ -11,6 +11,19 @@ output:
 ---
 
 ```{r include=FALSE}
+install.packages("rmdformats")
+install.packages("ggpubr")
+install.packages("knitr")
+install.packages("kableExtra")
+install.packages("tidyverse")
+install.packages("lme4")
+install.packages("lme4Test")
+install.packages("emmeans")
+install.packages("fdapace")
+```
+
+
+```{r include=FALSE}
 library(rmdformats)
 library(tidyverse)
 library(kableExtra)  # For nice tables
@@ -652,7 +665,7 @@ We can reconstruct the F2 trajectories using the information captured by each FP
 
 ### working out necessary parameters
 
-Let's first work out parameters required for reconstructing the original PC1 trajectories. This includes: (1) mean curve, (2) time points used to fit FPCA, (3) eigenfunction associated with each time point and (4) PC loadings for each PC. These are stored in the ```fdapace::FDA``` object that we obtained from the FPCA analysis earlier. The following code computes eigenfunctions manually.
+Let's first work out parameters required for reconstructing the original PC1 trajectories. This includes: (1) mean curve, (2) time points used to fit FPCA, (3) eigenfunction associated with each time point and (4) PC loadings for each PC. These are stored in the ```df_dyn_fpca``` object that we obtained from the FPCA analysis earlier. The following code computes eigenfunctions manually.
 
 ```{r}
 # mean fPC1 trajectory
@@ -758,6 +771,8 @@ dat_time <- left_join(dat_time, rec, by = "col_number")
 We have everything to reconstruct F2 trajectories from FPC scores: eigenfunctions, mean curve, and FPC scores. Let's reconstruct the individual F2 contours from FPC1 scores:
 
 ```{r warning=FALSE}
+
+
 # reconstruct individual trajectory tokens
 dat_time <- dat_time |>  
   dplyr::mutate(

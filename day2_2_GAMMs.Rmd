@@ -11,6 +11,21 @@ output:
 ---
 
 ```{r include=FALSE}
+# install.packages("rmdformats")
+# install.packages("ggpubr")
+# install.packages("knitr")
+# install.packages("kableExtra")
+# install.packages("tidyverse")
+# install.packages("lme4")
+# install.packages("lme4Test")
+# install.packages("emmeans")
+# install.packages("fdapace")
+# install.packages("mgcv")
+# install.packages("itsadug")
+# install.packages("tidygam")
+```
+
+```{r include=FALSE}
 library(rmdformats)
 library(tidyverse)
 

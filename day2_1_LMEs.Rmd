@@ -10,6 +10,23 @@ output:
     # number_sections: true
 ---
 
+<!-- Run the following code to install necessary packages -->
+
+<!-- Also, you could change the pipe settings by going to: Edit > Preferences > Code > Tick in the box "Use native pipe operator |> (requires R 4.1+)"-->
+
+```{r include=FALSE}
+# install.packages("rmdformats")
+# install.packages("ggpubr")
+# install.packages("knitr")
+# install.packages("kableExtra")
+# install.packages("tidyverse")
+# install.packages("lme4")
+# install.packages("lme4Test")
+# install.packages("emmeans")
+# install.packages("fdapace")
+```
+
+
 ```{r include=FALSE}
 library(rmdformats)
 library(tidyverse)
@@ -24,7 +41,28 @@ cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 "#D55E00", "#CC79A7")
 ```
 
-# Introduction
+# Article reading
+
+We learnt about PCA and FPCA yesterday. Let's take a look at some papers and resources that utilise PCA/FPCA as a real-life example.
+
+## PCA
+
+Paver, A., Wright, D., Braber, N. & Pautz, N. (2025). Stereotyped accent judgements in forensic contexts: Listener perceptions of social traits and types of behaviour. *Frontiers in Communication 9*. https://doi.org/10.3389/fcomm.2024.1462013
+
+## PCA + FPCA
+
+Egurtzegi, A., García-Covelo, A., & Urrestarazu-Porta, I. (2023) Does Basque have an impossible phonological opposition?. *BCBL Speech and Bilingualism Talks*. https://egurtzegi.github.io/slides/larraine-osoa/2023-larraine-nasals-bcbl.html#/
+
+## FPCA
+
+Strycharczuk, P., Kirkham, S., Gorman, E., & Nagamine, T. (2024). Towards a dynamical model of English vowels. Evidence from diphthongisation. *Journal of Phonetics, 107*, 101349. https://doi.org/10.1016/j.wocn.2024.101349
+
+Puggaard-Rode, R. (2023). The /t/ release in Jutland Danish. Decomposing the spectrum with functional PCA. In R. Skarnitzl & J. Volín. (Eds). *Proceedings of the International Congress of Phonetic Sciences* (pp. 3262–3266). Guarant International. Online supplementary materials: https://rpuggaardrode.github.io/icphs2023/
+
+Cronenberg, J., Gubian, M., Harrington, J. & Ruch, H. (2020): A dynamic model of the change from pre- to post-aspiration in Andalusian Spanish. *Journal of Phonetics, 83*, 101016. https://doi.org/10.1016/j.wocn.2020.101016
+
+
+# Introduction to linear mixed-effect models
 
 On Day 1, we tried **bottom-up**, **data-driven** approach to spectral analysis using **principal component analysis (PCA)** and **functional principal component analysis (FPCA)**. They were all data-driven approaches to **hypothesis generation**, although it was also possible to conduct hypothesis testing using the derived PC scores. PCA and FPCA offer flexible approach to data analysis given that you can analyse both static and dynamic analyses with statistical tests that you're familiar with. 
 
