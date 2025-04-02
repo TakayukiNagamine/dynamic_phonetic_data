@@ -1153,5 +1153,3 @@ Sóskuthy, M. (2021). Evaluating generalised additive mixed modelling strategies
 Steffman, J. (2022). Modeling intonational tunes with Generalized Additive Mixed Models: A practical introduction. Online tutorial. https://jsteffman.github.io/GAMM_intonation_modeling.html
 
 Wieling, M. (2018). Analyzing dynamic phonetic data using generalized additive mixed modeling: A tutorial focusing on articulatory differences between L1 and L2 speakers of English. *Journal of Phonetics, 70*, 86–116. https://doi.org/10.1016/j.wocn.2018.03.002
-
-
