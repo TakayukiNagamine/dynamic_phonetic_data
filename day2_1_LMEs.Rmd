@@ -12,18 +12,21 @@ output:
 
 <!-- Run the following code to install necessary packages -->
 
-<!-- Also, you could change the pipe settings by going to: Edit > Preferences > Code > Tick in the box "Use native pipe operator |> (requires R 4.1+)"-->
+<!-- Also, you could change the pipe settings by going to: (For Mac user) Edit > Preferences > Code > Tick in the box "Use native pipe operator |> (requires R 4.1+)"-->
+
+<!-- (Windows/Linux) Tools > Global options > Code > Tick in the box "Use native pipe operator |> (requires R 4.1+)"-->
 
 ```{r include=FALSE}
-# install.packages("rmdformats")
-# install.packages("ggpubr")
-# install.packages("knitr")
-# install.packages("kableExtra")
-# install.packages("tidyverse")
-# install.packages("lme4")
-# install.packages("lme4Test")
-# install.packages("emmeans")
-# install.packages("fdapace")
+
+install.packages("rmdformats")
+install.packages("ggpubr")
+install.packages("knitr")
+install.packages("kableExtra")
+install.packages("tidyverse")
+install.packages("lme4")
+install.packages("lme4Test")
+install.packages("emmeans")
+install.packages("fdapace")
 ```
 
 
@@ -31,7 +34,7 @@ output:
 library(rmdformats)
 library(tidyverse)
 library(kableExtra)  # For nice tables
-library(knitr)
+# library(knitr)
 
 # setting the plot theme globally
 theme_set(theme_classic())
@@ -284,7 +287,7 @@ df_mid |>
 
 # number of tokens per segment
 df_mid |> 
-  dplyr::group_by(segment) |> 
+  dplyr::group_by(language, segment, vowel) |> 
   dplyr::summarise(n = n()) |> 
   dplyr::ungroup()
 ```
@@ -309,7 +312,7 @@ And check the mean and sd:
 ```{r}
 # check mean and sd of raw/scaled F1 values for each speaker
 df_mid |> 
-  dplyr::group_by(speaker) |>
+  dplyr::group_by(language, vowel) |>
   dplyr::summarise(
     f1_mean = mean(f1),
     f1_sd = sd(f1),
@@ -328,7 +331,6 @@ Could you visualise F1, F2 and F3 values using ```ggpplot```? If you are not sur
 ## F1
 
 ```{r warning=FALSE, message=FALSE}
-# df_mid |> 
 # ...
 ```
 

@@ -617,8 +617,8 @@ Sticking to the **difference smooths** approach, could you follow the procedures
 
 ```{r}
 # converting language variable into ordered variable
-# df_dyn_L$context.ord <- ...
-# don't forget the second line
+df_dyn_L$context.ord <- as.ordered(df_dyn_L$context)
+contrasts(df_dyn_L$context.ord) <- "contr.treatment"
 ```
 
 ### Fitting the model
@@ -627,7 +627,9 @@ Please define a model with ```language.ord``` and ```context.ord```, incorporate
 
 ```{r}
 # fitting a model with language.ord and context.ord
-# m4 <- ...
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "fREML")
+
+m4 <- mgcv::bam(f2z ~ context.ord + s(time) + s(time, by = context.ord), data = df_dyn_L, method = "fREML")
 
 # model summary
 # ...

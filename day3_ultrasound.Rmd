@@ -1073,7 +1073,7 @@ dat_time_en <- dat_time |>
 
 ```{r message=FALSE, warning=FALSE} 
 # running model
-m1 <- lme4::lmer(PC1 ~ L1 + segment + L1:segment + (1|speaker), dat = dat_time_en)
+m1 <- lme4::lmer(PC1 ~ L1 + segment + L1:segment + (1|speaker), dat = dat_time_en, REML = FALSE)
 
 # summary
 summary(m1)
@@ -1083,7 +1083,7 @@ summary(m1)
 
 ```{r}
 # nested model to test interaction
-m2 <- lme4::lmer(PC1 ~ L1 + segment + (1|speaker), dat = dat_time_en)
+m2 <- lme4::lmer(PC1 ~ L1 + segment + (1|speaker), dat = dat_time_en, REML = FALSE)
 
 # model comparison
 anova(m1, m2, test = "Chisq")
@@ -1252,32 +1252,32 @@ plot_smooth(m2, view = "prop_time", plot_all = "LangSeg.ord", cond = list(LangSe
 plot_diff(m2, view = "prop_time", comp = list(LangSeg.ord = c("English./ɹ/", "Japanese./ɹ/")), print.summary = FALSE, main = "Japanese-English difference for /ɹ/")
 ```
 
-### ```tidygam``` approach
+<!-- ### ```tidygam``` approach -->
 
-We can also visualise the GAMMs results more neatly using ```tidygam```.
+<!-- We can also visualise the GAMMs results more neatly using ```tidygam```. -->
 
-```{r warning=FALSE, message=FALSE}
-# inspect gams
-m2_preds <- tidygam::predict_gam(m2, exclude_terms = "s(prop_time,speaker)")
+<!-- ```{r warning=FALSE, message=FALSE} -->
+<!-- # inspect gams -->
+<!-- m2_preds <- tidygam::predict_gam(m2, exclude_terms = "s(prop_time,speaker)") -->
 
-# show prediction
-m2_preds
+<!-- # show prediction -->
+<!-- m2_preds -->
 
-# separate two main effects
-m2_preds_2 <- tidygam::predict_gam(
-  m2,
-  length_out = 25,
-  exclude_terms = "s(prop_time,speaker)",
-  separate = list(LangSeg.ord = c("L1", "segment"))
-)
+<!-- # separate two main effects -->
+<!-- m2_preds_2 <- tidygam::predict_gam( -->
+<!--   m2, -->
+<!--   length_out = 25, -->
+<!--   exclude_terms = "s(prop_time,speaker)", -->
+<!--   separate = list(LangSeg.ord = c("L1", "segment")) -->
+<!-- ) -->
 
-# get gamm prediction
-m2_preds_2 |>
-  plot(series = "prop_time", comparison = "segment") +
-  scale_colour_manual(values = cbPalette) +
-  scale_fill_manual(values = cbPalette) +
-  facet_grid(cols = vars(L1))
-```
+<!-- # get gamm prediction -->
+<!-- m2_preds_2 |> -->
+<!--   plot(series = "prop_time", comparison = "segment") + -->
+<!--   scale_colour_manual(values = cbPalette) + -->
+<!--   scale_fill_manual(values = cbPalette) + -->
+<!--   facet_grid(~ L1) -->
+<!-- ``` -->
 
 # Session Info
 
