@@ -1175,6 +1175,8 @@ How did you find GAMMs so far? What types of data/research questions might be su
 
 The GAMMs section is heavily drawn from the great existing tutorials and empirical papers. All of these provide great details in GAMMs modelling and I would highly recommend all of these if you would like to know more about GAMMs.
 
+Chenzi, X. (2024). Cross-dialectal perspectives on Mandarin neutral tone. *Journal of Phonetics, 106*, 101341. https://doi.org/10.1016/j.wocn.2024.101341
+
 Chuang, Y.-Y., Fon, J., Papakyritsis, I., Baayen, H., & Ball, M. J. (2021). Analyzing Phonetic Data with Generalized Additive Mixed Models. In M. Ball (Ed.), *Manual of Clinical Phonetics* (1st ed., Vol. 1, pp. 108–138). Routledge. https://doi.org/10.4324/9780429320903-10
 
 Coretta, S. (2024). Learn Generalised Additive (Mixed) Models. Online tutorial. https://stefanocoretta.github.io/learnGAM/
