@@ -18,15 +18,15 @@ output:
 
 ```{r include=FALSE}
 
-install.packages("rmdformats")
-install.packages("ggpubr")
-install.packages("knitr")
-install.packages("kableExtra")
-install.packages("tidyverse")
-install.packages("lme4")
-install.packages("lme4Test")
-install.packages("emmeans")
-install.packages("fdapace")
+# install.packages("rmdformats")
+# install.packages("ggpubr")
+# install.packages("knitr")
+# install.packages("kableExtra")
+# install.packages("tidyverse")
+# install.packages("lme4")
+# install.packages("lme4Test")
+# install.packages("emmeans")
+# install.packages("fdapace")
 ```
 
 
@@ -300,9 +300,9 @@ To compare formant values across participants, we'll normalise them using z-scor
 df_mid <- df_mid |> 
   dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
   dplyr::mutate(
-    f1z = as.numeric(scale(f1)), # scale f1 into z-score
-    f2z = as.numeric(scale(f2)), # scale f2 into z-score
-    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+    f1z = scale(as.numeric(f1)), # scale f1 into z-score
+    f2z = scale(as.numeric(f2)), # scale f2 into z-score
+    f3z = scale(as.numeric(f3)) # scale f3 into z-score
   ) |> 
   dplyr::ungroup() # don't forget ungrouping
 ```
@@ -445,6 +445,8 @@ The /ɹ/ data set should have the same coding scheme. These overall suggest that
 
 Then, let's build a model for F1. We'll begin with the /l/ models.
 
+**Edit 10/04/2025**: The following model no longer outputs a singular fit warning when running on the latest version of R/R Studio! It may still display the singular fit warning if run on a different version of R. The model summary still suggests some issues with the random effect, so we'll just go ahead and see how to resolve it.
+
 ```{r}
 # F1 full model
 lm1_L_F1 <- lme4::lmer(f1z ~ 1 + language + vowel + language:vowel + (1 + vowel|speaker) + (1 + language|word), data = df_mid_L, REML = FALSE)
@@ -510,7 +512,7 @@ The raw data do not always match the estimated values as there are some other fa
 
 Statistical models usually rely on assumptions. Let's check whether the linear model we've just fit meets the **normality** and **constant variance** assumptions.
 
-When the model meets the normality assumption, the **residuals** are usually normally distributed. The residual is the error between an observed data value and a predicted value. Similarly, when the model satisfies the constant variance assumption (i.e., **heteroscedasticity**), the spread of residuals should be constant along the regression line.
+When the model meets the normality assumption, the **residuals** are usually normally distributed. The residual is the error between an observed data value and a predicted value. Similarly, when the model satisfies the constant variance assumption (i.e., **homoskedasticity**), the spread of residuals should be constant along the regression line.
 
 The first plot shows the histgram of residuals, and it seems to show that the residuals are normally distributed. The plot in the middle is called a **quantile-quantile (Q-Q) plot**, in which the residuals show a (nearly) linear relationships when satisfying the residual assumption. Finally, the **residual plot** on the right should show that the spread of the residuals is approximately equal across the range of fitted values without any particular linear trend. 
 
