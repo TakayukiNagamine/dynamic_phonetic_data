@@ -180,9 +180,9 @@ Do you remember how to visualise the dynamic data? The basic procedure is the sa
 df_dyn <- df_dyn |> 
   dplyr::group_by(speaker) |> # tell R to do the following iteration per speaker
   dplyr::mutate(
-    f1z = as.numeric(scale(f1)), # scale f1 into z-score
-    f2z = as.numeric(scale(f2)), # scale f2 into z-score
-    f3z = as.numeric(scale(f3)) # scale f3 into z-score
+    f1z = scale(as.numeric(f1)), # scale f1 into z-score
+    f2z = scale(as.numeric(f2)), # scale f2 into z-score
+    f3z = scale(as.numeric(f3)) # scale f3 into z-score
   ) |> 
   dplyr::ungroup() # don't forget ungrouping
 ```
@@ -483,7 +483,7 @@ What if we just model F2 only with parametric terms? Let's just start with **lan
 
 ```{r}
 # fit a model with parametric terms only
-m1 <- bam(f2z ~ language, data = df_dyn_L, method = "fREML")
+m1 <- mgcv::bam(f2z ~ language, data = df_dyn_L, method = "fREML")
 
 # model summary
 summary(m1)
@@ -566,7 +566,7 @@ To do this, we first need to convert the predictor variables into **ordered** va
 ```{r}
 # converting language variable into ordered variable
 df_dyn_L$language.ord <- as.ordered(df_dyn_L$language)
-contrasts(df_dyn_L$language) <- "contr.treatment"
+contrasts(df_dyn_L$language.ord) <- "contr.treatment"
 ```
 
 When trying to model with difference smooths, you need to specify the following:
@@ -627,12 +627,10 @@ Please define a model with ```language.ord``` and ```context.ord```, incorporate
 
 ```{r}
 # fitting a model with language.ord and context.ord
-m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "fREML")
-
-m4 <- mgcv::bam(f2z ~ context.ord + s(time) + s(time, by = context.ord), data = df_dyn_L, method = "fREML")
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
 
 # model summary
-# ...
+summary(m4)
 ```
 
 
@@ -642,17 +640,12 @@ The practice here allows us to proceed onto model comparison between the full mo
 
 You can re-use ```m3``` and ```m4```. In addition, you might also want to specify ```m5```. Don't also forget about changing the estimation method. 
 
-```{r include=FALSE, warning=FALSE, message=FALSE}
-df_dyn_L$context.ord <- as.ordered(df_dyn_L$context)
-contrasts(df_dyn_L$context.ord) <- "contr.treatment"
-```
-
 ```{r}
 # model with language.ord
-m3 <- mgcv::bam(f2z ~ language.ord + s(time) + s(time, by = language.ord), data = df_dyn_L, method = "fREML")
+m3 <- mgcv::bam(f2z ~ language.ord + s(time) + s(time, by = language.ord), data = df_dyn_L, method = "ML")
 
 # model with both language.ord and context.ord
-m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "fREML")
+m4 <- mgcv::bam(f2z ~ language.ord + context.ord + s(time) + s(time, by = language.ord) + s(time, by = context.ord), data = df_dyn_L, method = "ML")
 
 # model with context.ord
 # m5 <- ...
@@ -840,8 +833,6 @@ If you remember from the linear models, I explained that statistcal tests have a
 
 Something similar can be said here: residuals need to be independent from each other for GAMMs models, too. In a simpler term, **the model does not know (yet) whether data points are completely independent of each other or sampled from a series of time series data**. This has an important consequence in estimation accuracy, so we need to address this. 
 
-<!-- However, when fitting time-series data, it is inevitable that each data point is dependent on each other, and this influences the residual structure. That is, the residual of a time point (say "t1") is dependent on the residual of the previous time point ("t0"), then t2 on t1, t3 on t2, and so forth.  -->
-
 
 The solution is to incorporate **AR(1) model** into your GAMMs model. Through adding **AR(1) model**, we define:
 
@@ -923,7 +914,7 @@ Let's also check whether autocorrelation is accounted for.
 itsadug::acf_resid(m7)
 ```
 
-The autocorrelation plot shows that the autocorrelation at lag 1 (i.e., second vertical line from the left) is substantially shorter than in the previous plot. This means that the new model ```m7``` successfully recognises the dependencies between data points and thus the residual autocorrelations have been eliminated. 
+The autocorrelation plot shows that the autocorrelation at lag 1 (i.e., second vertical line from the left) is substantially samller than in the previous plot. This means that the new model ```m7``` successfully recognises the dependencies between data points and thus the residual autocorrelation has been eliminated. 
 
 ## Model criticism
 
@@ -1090,30 +1081,74 @@ The full model still improves the degree of model fit at the statistically signi
 
 ## Data visualisation
 
-Instead of the plotting fucntions in ```itsadug```, here I use the ```tidygam``` package to visualise data while disentangling the ```language``` and ```context``` effects.
+### separate smooths using ```itsadug```
 
-```{r}
-# inspect gams
-m11_preds <- tidygam::predict_gam(m11, exclude_terms = c("s(time,speaker)", "s(time,word)"))
+Let's check if the PC1 trajectories are modelled accurately. We'll first check the separate smooths for each liquid segment, which seems to suggest that the modelling looks good.
 
-# show prediction
-m11_preds
+```{r warning=FALSE, message=FALSE}
+df_dyn_L |> 
+  group_by(LangCont.ord) |> 
+  summarise() |> 
+  ungroup()
+# separate smooths 1
+## English
+plot_smooth(m11, view = "time", plot_all = "LangCont.ord", cond = list(LangCont.ord = c("English./i/", "English./æ/", "English./u/")))
 
-# separate two main effects
-m11_preds_2 <- tidygam::predict_gam(
-  m11,
-  length_out = 25,
-  exclude_terms = c("s(time,speaker)", "s(time,word)"),
-  separate = list(LangCont.ord = c("language", "context"))
-)
-
-# get gamm prediction
-m11_preds_2 |>
-  plot(series = "time", comparison = "language") +
-  scale_colour_manual(values = cbPalette) +
-  scale_fill_manual(values = cbPalette) +
-  facet_grid(cols = vars(context))
+## Japanese
+plot_smooth(m11, view = "time", plot_all = "LangCont.ord", cond = list(LangCont.ord = c("Japanese./i/", "Japanese./æ/", "Japanese./u/")))
 ```
+
+### separate and difference smooths using ```itsadug```
+
+Now let's check how L1 English and L1 Japanese speakers differ in the patterns of their PC1 trajectoties. We'll visualise separate by-group smooths for each liquid segment first, followed by difference smooths encoding the by-group differences.
+
+```{r warning=FALSE, message=FALSE}
+# /i/
+## separate smooths
+plot_smooth(m11, view = "time", plot_all = "LangCont.ord", cond = list(LangCont.ord = c("English./i/", "Japanese./i/")))
+
+## difference smooth
+plot_diff(m11, view = "time", comp = list(LangCont.ord = c("English./i/", "Japanese./i/")), print.summary = FALSE, main = "Japanese-English difference in the /i/ context")
+
+# /æ/
+## separate smooths
+plot_smooth(m11, view = "time", plot_all = "LangCont.ord", cond = list(LangCont.ord = c("English./æ/", "Japanese./æ/")))
+
+## difference smooth
+plot_diff(m11, view = "time", comp = list(LangCont.ord = c("English./æ/", "Japanese./æ/")), print.summary = FALSE, main = "Japanese-English difference in the /æ/ context")
+
+# /u/
+## separate smooths
+plot_smooth(m11, view = "time", plot_all = "LangCont.ord", cond = list(LangCont.ord = c("English./u/", "Japanese./u/")))
+
+## difference smooth
+plot_diff(m11, view = "time", comp = list(LangCont.ord = c("English./u/", "Japanese./u/")), print.summary = FALSE, main = "Japanese-English difference in the /æ/ context")
+```
+
+<!-- Instead of the plotting functions in ```itsadug```, here I use the ```tidygam``` package to visualise data while disentangling the ```language``` and ```context``` effects. -->
+
+<!-- ```{r} -->
+<!-- # inspect gams -->
+<!-- m11_preds <- tidygam::predict_gam(m11, exclude_terms = c("s(time,speaker)", "s(time,word)")) -->
+
+<!-- # show prediction -->
+<!-- m11_preds -->
+
+<!-- # separate two main effects -->
+<!-- m11_preds_2 <- tidygam::predict_gam( -->
+<!--   m11, -->
+<!--   length_out = 25, -->
+<!--   exclude_terms = c("s(time,speaker)", "s(time,word)"), -->
+<!--   separate = list(LangCont.ord = c("language", "context")) -->
+<!-- ) -->
+
+<!-- # get gamm prediction -->
+<!-- m11_preds_2 |> -->
+<!--   plot(series = "time", comparison = "language") + -->
+<!--   scale_colour_manual(values = cbPalette) + -->
+<!--   scale_fill_manual(values = cbPalette) + -->
+<!--   facet_grid(cols = vars(context)) -->
+<!-- ``` -->
 
 
 # Summary
