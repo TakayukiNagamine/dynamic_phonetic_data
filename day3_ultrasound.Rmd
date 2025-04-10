@@ -253,7 +253,8 @@ tongue_plot <- dat_long_plot |>
   dplyr::group_by(speaker) |> 
   ggplot2::ggplot() +
   # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
-  geom_path(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time)), linewidth = 1, show.legend = TRUE) +
+  geom_point(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time))) +
+  # geom_path(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time)), linewidth = 1, show.legend = TRUE) +
   geom_hline(yintercept = 0, linetype = 3) +
   theme_classic() +
   scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
@@ -929,7 +930,10 @@ dat_time <- dat_time |>
   )
 
 # visualise FPC1
-dat_time |>  
+dat_time |> 
+  dplyr::filter(
+    prompt %in% c("bereave", "believe")
+  ) |> 
   ggplot() +
   geom_path(aes(x = time, y = PC1_reconstruct, group = token_id, colour = prompt), alpha = 0.2, show.legend = TRUE) +
   scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
@@ -946,6 +950,9 @@ dat_time |>
 ```{r}
 # visualise FPC2
 dat_time |>  
+  dplyr::filter(
+    prompt %in% c("bereave", "believe")
+  ) |> 
   ggplot() +
   geom_path(aes(x = time, y = PC2_reconstruct, group = token_id, colour = prompt), alpha = 0.2, show.legend = TRUE) +
   scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
@@ -960,6 +967,9 @@ dat_time |>
 ```{r}
 # visualise FPC3
 dat_time |>  
+  dplyr::filter(
+    prompt %in% c("bereave", "believe")
+  ) |> 
   ggplot() +
   geom_path(aes(x = time, y = PC3_reconstruct, group = token_id, colour = prompt), alpha = 0.2, show.legend = TRUE) +
   scale_color_manual(values = c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")) +
