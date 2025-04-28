@@ -275,6 +275,153 @@ tongue_plot <- dat_long_plot |>
 tongue_plot
 ```
 
+```{r}
+# Plotting the tongue splines
+tp_1 <- dat_long_plot |> 
+  na.omit() |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::filter(speaker == "English A",
+                prompt == "bereave",
+                repetition == "2",
+                prop_time == "0") |> 
+  ggplot2::ggplot() +
+  # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
+  # geom_point(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time))) +
+  geom_path(aes(x = X_z, y = Y_z, group = spline_id), linewidth = 1, show.legend = TRUE) +
+  geom_label(aes(x = X_z, y = Y_z, label = point_number), label.size = 0, size = 8, label.padding = unit(0, "lines")) +
+  # geom_hline(yintercept = 0, linetype = 3) +
+  theme_void() +
+  # scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
+  # facet_grid(factor(speaker, levels = c("English A", "Japanese A", "Japanese B")) ~ prompt) +
+  labs(x = "X", y = "Y", color='Proportional time (%)')
+
+# Showing the plot
+tp_1
+
+ggsave(tp_1, file = "/Users/takayukinagamine/Documents/github/SSF_2025/plot/tongue_example_1.png", width = 5, height = 5)
+
+# Plotting the tongue splines
+tp_2 <- dat_long_plot |> 
+  na.omit() |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::filter(speaker == "English A",
+                prompt == "bereave",
+                repetition == "2",
+                prop_time == "30") |> 
+  ggplot2::ggplot() +
+  # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
+  # geom_point(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time))) +
+  geom_path(aes(x = X_z, y = Y_z, group = spline_id), linewidth = 1, show.legend = TRUE) +
+  geom_label(aes(x = X_z, y = Y_z, label = point_number), label.size = 0, size = 8, label.padding = unit(0, "lines")) +
+  # geom_hline(yintercept = 0, linetype = 3) +
+  theme_void() +
+  # scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
+  # facet_grid(factor(speaker, levels = c("English A", "Japanese A", "Japanese B")) ~ prompt) +
+  labs(x = "X", y = "Y", color='Proportional time (%)')
+
+# Showing the plot
+tp_2
+
+ggsave(tp_2, file = "/Users/takayukinagamine/Documents/github/SSF_2025/plot/tongue_example_2.png", width = 5, height = 5)
+
+# Plotting the tongue splines
+tp_3 <- dat_long_plot |> 
+  na.omit() |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::filter(speaker == "English A",
+                prompt == "bereave",
+                repetition == "2",
+                prop_time == "50") |> 
+  ggplot2::ggplot() +
+  # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
+  # geom_point(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time))) +
+  geom_path(aes(x = X_z, y = Y_z, group = spline_id), linewidth = 1, show.legend = TRUE) +
+  geom_label(aes(x = X_z, y = Y_z, label = point_number), label.size = 0, size = 8, label.padding = unit(0, "lines")) +
+  # geom_hline(yintercept = 0, linetype = 3) +
+  theme_void() +
+  # scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
+  # facet_grid(factor(speaker, levels = c("English A", "Japanese A", "Japanese B")) ~ prompt) +
+  labs(x = "X", y = "Y", color='Proportional time (%)')
+
+# Showing the plot
+tp_3
+
+ggsave(tp_3, file = "/Users/takayukinagamine/Documents/github/SSF_2025/plot/tongue_example_3.png", width = 5, height = 5)
+
+# Plotting the tongue splines
+tp_4 <- dat_long_plot |> 
+  na.omit() |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::filter(speaker == "English A",
+                prompt == "bereave",
+                repetition == "2",
+                prop_time == "80") |> 
+  ggplot2::ggplot() +
+  # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
+  # geom_point(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time))) +
+  geom_path(aes(x = X_z, y = Y_z, group = spline_id), linewidth = 1, show.legend = TRUE) +
+  geom_label(aes(x = X_z, y = Y_z, label = point_number), label.size = 0, size = 8, label.padding = unit(0, "lines")) +
+  # geom_hline(yintercept = 0, linetype = 3) +
+  theme_void() +
+  # scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
+  # facet_grid(factor(speaker, levels = c("English A", "Japanese A", "Japanese B")) ~ prompt) +
+  labs(x = "X", y = "Y", color='Proportional time (%)')
+
+# Showing the plot
+tp_4
+
+ggsave(tp_4, file = "/Users/takayukinagamine/Documents/github/SSF_2025/plot/tongue_example_4.png", width = 5, height = 5)
+
+# Plotting the tongue splines
+tp_5 <- dat_long_plot |> 
+  na.omit() |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::filter(speaker == "English A",
+                prompt == "bereave",
+                repetition == "2",
+                prop_time == "100") |> 
+  ggplot2::ggplot() +
+  # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
+  # geom_point(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time))) +
+  geom_path(aes(x = X_z, y = Y_z, group = spline_id), linewidth = 1, show.legend = TRUE) +
+  geom_label(aes(x = X_z, y = Y_z, label = point_number), label.size = 0, size = 8, label.padding = unit(0, "lines")) +
+  # geom_hline(yintercept = 0, linetype = 3) +
+  theme_void() +
+  # scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
+  # facet_grid(factor(speaker, levels = c("English A", "Japanese A", "Japanese B")) ~ prompt) +
+  labs(x = "X", y = "Y", color='Proportional time (%)')
+
+# Showing the plot
+tp_5
+
+ggsave(tp_5, file = "/Users/takayukinagamine/Documents/github/SSF_2025/plot/tongue_example_5.png", width = 5, height = 5)
+
+# Plotting the tongue splines
+tp_6 <- dat_long_plot |> 
+  na.omit() |> 
+  dplyr::group_by(speaker) |> 
+  dplyr::filter(speaker == "English A",
+                prompt == "bereave",
+                repetition == "2",
+                prop_time == "100") |> 
+  ggplot2::ggplot() +
+  # grouping based on spline_id to get R to recognise that a tongue shapes consist of 11 DLC knots
+  # geom_point(aes(x = X_z, y = Y_z, group = spline_id, colour = as.numeric(prop_time))) +
+  geom_path(aes(x = X_z, y = Y_z, group = spline_id), linewidth = 5, show.legend = TRUE) +
+  # geom_label(aes(x = X_z, y = Y_z, label = point_number), label.size = 0, size = 8, label.padding = unit(0, "lines")) +
+  # geom_hline(yintercept = 0, linetype = 3) +
+  theme_void() +
+  # scale_colour_distiller(palette = "RdYlBu", guide = guide_colourbar(name = "Proportional time (%)", title.position = "top", title.hjust = 0.5)) +
+  # facet_grid(factor(speaker, levels = c("English A", "Japanese A", "Japanese B")) ~ prompt) +
+  labs(x = "X", y = "Y", color='Proportional time (%)')
+
+# Showing the plot
+tp_6
+
+ggsave(tp_6, file = "/Users/takayukinagamine/Documents/github/SSF_2025/plot/tongue_example_6.png", width = 5, height = 3.5)
+```
+
+
 # Principal Component Analysis (PCA) on midsagittal tongue shape
 
 While the visual inspection makes it fairly obvious that there are some articulatory differences between English and Japanese speakers, a challenging aspect in ultrasound data analysis to quantify such differences. 
