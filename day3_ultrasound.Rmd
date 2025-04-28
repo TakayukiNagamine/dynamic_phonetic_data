@@ -275,7 +275,7 @@ tongue_plot <- dat_long_plot |>
 tongue_plot
 ```
 
-```{r}
+```{r include=FALSE}
 # Plotting the tongue splines
 tp_1 <- dat_long_plot |> 
   na.omit() |> 
